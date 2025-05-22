@@ -32,14 +32,18 @@ def get_oil_price():
         url = 'https://www.cpc.com.tw/historyprice.aspx?n=2890'
         logger.info(f"開始抓取油價資料，URL: {url}")
         
-        response = requests.get(url)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers)
         response.encoding = 'utf-8'
         logger.info(f"網頁回應狀態碼: {response.status_code}")
         
         soup = BeautifulSoup(response.text, 'html.parser')
+        logger.info("成功解析網頁內容")
         
         # 找到油價表格
-        table = soup.find('table', {'class': 'table'})
+        table = soup.find('table', {'id': 'ctl00_ContentPlaceHolder1_gvHistoryPrice'})
         if not table:
             logger.error("找不到油價表格")
             return "無法取得油價資訊"
