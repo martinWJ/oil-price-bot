@@ -22,8 +22,8 @@ handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
 
 def get_current_week_dates():
     today = datetime.now()
-    # 計算本周的開始（週日）和結束（週六）
-    start_of_week = today - timedelta(days=today.weekday() + 1)
+    # 計算本周的開始（週一）和結束（週日）
+    start_of_week = today - timedelta(days=today.weekday())
     end_of_week = start_of_week + timedelta(days=6)
     return start_of_week.strftime('%m/%d'), end_of_week.strftime('%m/%d')
 
@@ -93,37 +93,44 @@ def get_oil_price_trend():
         response = requests.get(url, headers=headers)
         response.encoding = 'utf-8'
         
-        # 使用正則表達式找到油價資料
+        # 使用正則表達式找到油價資料和日期資料
         series_pattern = r'var\s+series\s*=\s*(\[.*?\]);'
-        series_match = re.search(series_pattern, response.text, re.DOTALL)
+        categories_pattern = r'var\s+categories\s*=\s*(\[.*?\]);'
         
-        if not series_match:
-            logger.error("找不到油價趨勢資料")
+        series_match = re.search(series_pattern, response.text, re.DOTALL)
+        categories_match = re.search(categories_pattern, response.text, re.DOTALL)
+        
+        if not series_match or not categories_match:
+            logger.error("找不到油價或日期資料")
             return "無法取得油價趨勢資訊"
             
         try:
             series_data = json.loads(series_match.group(1))
-            
-            # 取得最近7天的油價資料
-            trend_data = {
-                '92無鉛汽油': series_data[0]['data'],
-                '95無鉛汽油': series_data[1]['data'],
-                '98無鉛汽油': series_data[2]['data'],
-                '超級柴油': series_data[3]['data']
-            }
+            categories_data = json.loads(categories_match.group(1))
             
             # 組合趨勢訊息
-            message = "最近7天油價趨勢:\n"
-            for oil_type, prices in trend_data.items():
-                message += f"\n{oil_type}:\n"
-                for i, price in enumerate(prices):
-                    message += f"第{i+1}天: {price} 元/公升\n"
+            message = "最近油價趨勢:\n\n"
             
-            logger.info("成功取得油價趨勢資訊")
-            return message
+            # 假設 series_data 中的每個元素的 data 陣列長度相同且與 categories_data 長度相同
+            if series_data and series_data[0]['data'] and len(series_data[0]['data']) == len(categories_data):
+                # 遍歷日期，並取得對應的油價
+                for i in range(len(categories_data)):
+                    date = categories_data[i]
+                    message += f"{date}:\n"
+                    for oil_type_data in series_data:
+                        oil_type = oil_type_data['name']
+                        price = oil_type_data['data'][i]
+                        message += f"  {oil_type}: {price} 元/公升\n"
+                    message += "\n"
+                
+                logger.info("成功取得油價趨勢資訊")
+                return message
+            else:
+                logger.error("油價或日期資料格式不符")
+                return "油價趨勢資料格式不符，請稍後再試"
             
         except json.JSONDecodeError as e:
-            logger.error(f"解析油價趨勢資料時發生錯誤: {str(e)}")
+            logger.error(f"解析油價或日期資料時發生錯誤: {str(e)}")
             return "解析油價趨勢資料時發生錯誤，請稍後再試"
         
     except Exception as e:
