@@ -22,8 +22,12 @@ def get_oil_price():
     try:
         # 從中油歷史油價網頁抓取資料
         url = 'https://www.cpc.com.tw/historyprice.aspx?n=2890'
+        logger.info(f"開始抓取油價資料，URL: {url}")
+        
         response = requests.get(url)
         response.encoding = 'utf-8'
+        logger.info(f"網頁回應狀態碼: {response.status_code}")
+        
         soup = BeautifulSoup(response.text, 'html.parser')
         
         # 找到油價表格
@@ -60,6 +64,7 @@ def get_oil_price():
         message += f"98無鉛汽油: {price_98} 元/公升\n"
         message += f"超級柴油: {price_diesel} 元/公升"
         
+        logger.info(f"成功取得油價資訊: {message}")
         return message
         
     except Exception as e:
@@ -70,22 +75,27 @@ def get_oil_price():
 def callback():
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
-    app.logger.info("Request body: " + body)
+    logger.info("收到 LINE 訊息")
+    logger.info(f"Request body: {body}")
     
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
+        logger.error("Invalid signature. Please check your channel access token/channel secret.")
         abort(400)
     return 'OK'
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
+    logger.info(f"收到使用者訊息: {event.message.text}")
     if event.message.text in ['油價', '查詢油價']:
         oil_price_info = get_oil_price()
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text=oil_price_info)
         )
+        logger.info("已回覆油價資訊")
 
 if __name__ == "__main__":
-    app.run()
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
