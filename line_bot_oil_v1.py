@@ -71,7 +71,7 @@ def get_oil_price():
         logger.error(f"抓取油價時發生錯誤: {str(e)}")
         return "抓取油價時發生錯誤，請稍後再試"
 
-@app.route("/callback", methods=['POST'])
+@app.route("/webhook", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
