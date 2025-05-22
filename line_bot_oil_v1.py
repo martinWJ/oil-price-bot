@@ -7,6 +7,8 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
+import re
+import json
 
 # 設定 logging
 logging.basicConfig(level=logging.INFO)
@@ -39,45 +41,39 @@ def get_oil_price():
         response.encoding = 'utf-8'
         logger.info(f"網頁回應狀態碼: {response.status_code}")
         
-        soup = BeautifulSoup(response.text, 'html.parser')
-        logger.info("成功解析網頁內容")
+        # 使用正則表達式找到油價資料
+        series_pattern = r'var\s+series\s*=\s*(\[.*?\]);'
+        series_match = re.search(series_pattern, response.text, re.DOTALL)
         
-        # 找到油價表格
-        table = soup.find('table', {'id': 'ctl00_ContentPlaceHolder1_gvHistoryPrice'})
-        if not table:
-            logger.error("找不到油價表格")
-            return "無法取得油價資訊"
-            
-        # 找到最新一筆油價資料
-        rows = table.find_all('tr')
-        if len(rows) < 2:
+        if not series_match:
             logger.error("找不到油價資料")
             return "無法取得油價資訊"
             
-        # 取得最新一筆資料
-        latest_row = rows[1]  # 第一行是標題，所以取第二行
-        cells = latest_row.find_all('td')
-        
-        if len(cells) < 5:
-            logger.error("油價資料格式不正確")
-            return "無法取得油價資訊"
+        try:
+            series_data = json.loads(series_match.group(1))
+            logger.info(f"成功解析油價資料: {series_data}")
             
-        # 解析日期和油價
-        date = cells[0].text.strip()
-        price_92 = cells[1].text.strip()
-        price_95 = cells[2].text.strip()
-        price_98 = cells[3].text.strip()
-        price_diesel = cells[4].text.strip()
-        
-        # 組合回覆訊息
-        message = f"中油最新油價資訊 ({date}):\n"
-        message += f"92無鉛汽油: {price_92} 元/公升\n"
-        message += f"95無鉛汽油: {price_95} 元/公升\n"
-        message += f"98無鉛汽油: {price_98} 元/公升\n"
-        message += f"超級柴油: {price_diesel} 元/公升"
-        
-        logger.info(f"成功取得油價資訊: {message}")
-        return message
+            # 取得最新一筆資料
+            latest_data = {
+                '92無鉛汽油': series_data[0]['data'][0],
+                '95無鉛汽油': series_data[1]['data'][0],
+                '98無鉛汽油': series_data[2]['data'][0],
+                '超級柴油': series_data[3]['data'][0]
+            }
+            
+            # 組合回覆訊息
+            message = "中油最新油價資訊:\n"
+            message += f"92無鉛汽油: {latest_data['92無鉛汽油']} 元/公升\n"
+            message += f"95無鉛汽油: {latest_data['95無鉛汽油']} 元/公升\n"
+            message += f"98無鉛汽油: {latest_data['98無鉛汽油']} 元/公升\n"
+            message += f"超級柴油: {latest_data['超級柴油']} 元/公升"
+            
+            logger.info(f"成功取得油價資訊: {message}")
+            return message
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"解析油價資料時發生錯誤: {str(e)}")
+            return "解析油價資料時發生錯誤，請稍後再試"
         
     except Exception as e:
         logger.error(f"抓取油價時發生錯誤: {str(e)}")
