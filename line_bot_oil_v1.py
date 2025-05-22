@@ -99,14 +99,31 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     logger.info(f"收到使用者訊息: {event.message.text}")
-    if event.message.text in ['油價', '查詢油價']:
-        oil_price_info = get_oil_price()
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=oil_price_info)
-        )
-        logger.info("已回覆油價資訊")
+    try:
+        if event.message.text in ['油價', '查詢油價', '查油價']:
+            logger.info("開始獲取油價資訊")
+            oil_price_info = get_oil_price()
+            logger.info(f"獲取到的油價資訊: {oil_price_info}")
+            
+            logger.info("準備回覆訊息")
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text=oil_price_info)
+            )
+            logger.info("訊息已回覆")
+        else:
+            logger.info(f"收到未處理的訊息: {event.message.text}")
+    except Exception as e:
+        logger.error(f"處理訊息時發生錯誤: {str(e)}")
+        try:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="處理訊息時發生錯誤，請稍後再試")
+            )
+        except Exception as reply_error:
+            logger.error(f"回覆錯誤訊息時發生錯誤: {str(reply_error)}")
 
 if __name__ == "__main__":
     port = int(os.getenv('PORT', 5000))
+    logger.info(f"服務啟動於 port {port}")
     app.run(host='0.0.0.0', port=port)
