@@ -3,12 +3,14 @@ import logging
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageSendMessage
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import re
 import json
+import matplotlib.pyplot as plt
+import numpy as np
 
 # 設定 logging
 logging.basicConfig(level=logging.INFO)
@@ -92,6 +94,7 @@ def get_oil_price_trend():
         }
         response = requests.get(url, headers=headers)
         response.encoding = 'utf-8'
+        response.raise_for_status() # 檢查 HTTP 請求是否成功
         
         # 使用正則表達式找到油價資料和日期資料
         series_pattern = r'var\s+series\s*=\s*(\[.*?\]);'
@@ -108,34 +111,50 @@ def get_oil_price_trend():
             series_data = json.loads(series_match.group(1))
             categories_data = json.loads(categories_match.group(1))
             
-            # 組合趨勢訊息
-            message = "最近油價趨勢:\n\n"
+            if not series_data or not categories_data or len(series_data[0]['data']) != len(categories_data):
+                 logger.error("油價或日期資料格式不符或長度不一致")
+                 return "油價趨勢資料格式不符，請稍後再試"
+                 
+            # 使用 matplotlib 繪製趨勢圖
+            plt.figure(figsize=(10, 6))
             
-            # 假設 series_data 中的每個元素的 data 陣列長度相同且與 categories_data 長度相同
-            if series_data and series_data[0]['data'] and len(series_data[0]['data']) == len(categories_data):
-                # 遍歷日期，並取得對應的油價
-                for i in range(len(categories_data)):
-                    date = categories_data[i]
-                    message += f"{date}:\n"
-                    for oil_type_data in series_data:
-                        oil_type = oil_type_data['name']
-                        price = oil_type_data['data'][i]
-                        message += f"  {oil_type}: {price} 元/公升\n"
-                    message += "\n"
+            for oil_type_data in series_data:
+                oil_type = oil_type_data['name']
+                prices = oil_type_data['data']
+                plt.plot(categories_data, prices, marker='o', label=oil_type)
                 
-                logger.info("成功取得油價趨勢資訊")
-                return message
-            else:
-                logger.error("油價或日期資料格式不符")
-                return "油價趨勢資料格式不符，請稍後再試"
+            plt.xlabel('日期')
+            plt.ylabel('價格 (新台幣元/公升)')
+            plt.title('中油油價趨勢')
+            plt.xticks(rotation=45)
+            plt.legend()
+            plt.tight_layout()
+            
+            # 將圖表儲存到一個 BytesIO 物件中 (in-memory)
+            from io import BytesIO
+            buffer = BytesIO()
+            plt.savefig(buffer, format='png')
+            buffer.seek(0) # 將指標移回檔案開頭
+            
+            plt.close() # 關閉圖形以釋放記憶體
+            
+            # TODO: 將圖片上傳或轉換為 Base64 以便 LINE API 使用
+            # 目前先回傳一個訊息表示圖表已生成 (僅用於測試)
+            logger.info("油價趨勢圖表已生成")
+            
+            # 暫時回傳文字訊息，後續修改為 ImageSendMessage
+            return "油價趨勢圖表已生成 (待實作圖片回傳)"
             
         except json.JSONDecodeError as e:
             logger.error(f"解析油價或日期資料時發生錯誤: {str(e)}")
             return "解析油價趨勢資料時發生錯誤，請稍後再試"
         
+    except requests.exceptions.RequestException as e:
+        logger.error(f"抓取網頁時發生錯誤: {str(e)}")
+        return "抓取油價趨勢時發生網路錯誤，請稍後再試"
     except Exception as e:
-        logger.error(f"抓取油價趨勢時發生錯誤: {str(e)}")
-        return "抓取油價趨勢時發生錯誤，請稍後再試"
+        logger.error(f"生成油價趨勢圖表時發生錯誤: {str(e)}")
+        return "生成油價趨勢圖表時發生錯誤，請稍後再試"
 
 @app.route("/", methods=['GET'])
 def index():
@@ -179,15 +198,20 @@ def handle_message(event):
             logger.info("訊息已回覆")
         elif event.message.text in ['油價趨勢', '查詢油價趨勢', '查趨勢']:
             logger.info("開始獲取油價趨勢資訊")
-            trend_info = get_oil_price_trend()
-            logger.info(f"獲取到的油價趨勢資訊: {trend_info}")
             
-            logger.info("準備回覆趨勢訊息")
+            # 暫時調用 get_oil_price_trend 函數來測試抓取和繪圖邏輯
+            trend_result = get_oil_price_trend()
+            
+            # 這裡需要根據 get_oil_price_trend 的回傳結果來判斷回覆文字或圖片
+            # 目前 get_oil_price_trend 暫時回傳文字訊息
+            
+            logger.info("準備回覆趨勢訊息 (暫時回覆文字)")
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text=trend_info)
+                TextSendMessage(text=trend_result)
             )
-            logger.info("趨勢訊息已回覆")
+            logger.info("趨勢訊息已回覆 (暫時回覆文字)")
+            
         else:
             logger.info(f"收到未處理的訊息: {event.message.text}")
     except Exception as e:
