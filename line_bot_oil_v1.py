@@ -18,6 +18,14 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
 
+@app.route("/", methods=['GET'])
+def index():
+    return "油價查詢機器人服務正常運作中"
+
+@app.route("/health", methods=['GET'])
+def health():
+    return "OK", 200
+
 def get_oil_price():
     try:
         # 從中油歷史油價網頁抓取資料
@@ -83,7 +91,10 @@ def callback():
     except InvalidSignatureError:
         logger.error("Invalid signature. Please check your channel access token/channel secret.")
         abort(400)
-    return 'OK'
+    except Exception as e:
+        logger.error(f"處理訊息時發生錯誤: {str(e)}")
+        abort(500)
+    return 'OK', 200
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
