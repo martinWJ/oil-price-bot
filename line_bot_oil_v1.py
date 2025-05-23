@@ -1,6 +1,23 @@
+"""
+LINE Bot 油價小幫手 V1.0.0
+
+功能：
+1. 查詢本周油價資訊
+2. 顯示油價趨勢圖表
+3. 支援 92、95、98 無鉛汽油和超級柴油價格查詢
+
+版本規劃：
+V1 - 基礎查詢功能（當前版本）
+V2 - 歷史查詢功能
+V3 - 自動推播功能
+V4 - 預測分析功能
+
+作者：martinWJ
+"""
+
 import os
 import logging
-from flask import Flask, request, abort
+from flask import Flask, request, abort, send_from_directory
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageSendMessage
@@ -16,7 +33,7 @@ import numpy as np
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
 
 # 設定 LINE Channel Access Token 和 Channel Secret
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
@@ -138,23 +155,30 @@ def get_oil_price_trend():
             
             plt.close() # 關閉圖形以釋放記憶體
             
-            # TODO: 將圖片上傳或轉換為 Base64 以便 LINE API 使用
-            # 目前先回傳一個訊息表示圖表已生成 (僅用於測試)
-            logger.info("油價趨勢圖表已生成")
+            # 將圖表儲存到靜態檔案目錄
+            image_filename = f'oil_price_trend_{datetime.now().strftime("%Y%m%d%H%M%S")}.png'
+            image_path = os.path.join(app.static_folder, image_filename)
             
-            # 暫時回傳文字訊息，後續修改為 ImageSendMessage
-            return "油價趨勢圖表已生成 (待實作圖片回傳)"
+            # 確保靜態檔案目錄存在
+            if not os.path.exists(app.static_folder):
+                os.makedirs(app.static_folder)
+                
+            plt.savefig(image_path)
+            logger.info(f"油價趨勢圖表已儲存至 {image_path}")
+            
+            # 返回圖片檔案名稱，以便後續生成 URL
+            return image_filename
             
         except json.JSONDecodeError as e:
             logger.error(f"解析油價或日期資料時發生錯誤: {str(e)}")
-            return "解析油價趨勢資料時發生錯誤，請稍後再試"
+            return "Error: 解析油價趨勢資料時發生錯誤，請稍後再試"
         
     except requests.exceptions.RequestException as e:
         logger.error(f"抓取網頁時發生錯誤: {str(e)}")
-        return "抓取油價趨勢時發生網路錯誤，請稍後再試"
+        return "Error: 抓取油價趨勢時發生網路錯誤，請稍後再試"
     except Exception as e:
         logger.error(f"生成油價趨勢圖表時發生錯誤: {str(e)}")
-        return "生成油價趨勢圖表時發生錯誤，請稍後再試"
+        return f"Error: 生成油價趨勢圖表時發生錯誤: {str(e)}"
 
 @app.route("/", methods=['GET'])
 def index():
@@ -163,6 +187,10 @@ def index():
 @app.route("/health", methods=['GET'])
 def health():
     return "OK", 200
+
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    return send_from_directory(app.static_folder, filename)
 
 @app.route("/webhook", methods=['POST'])
 def callback():
@@ -199,18 +227,30 @@ def handle_message(event):
         elif event.message.text in ['油價趨勢', '查詢油價趨勢', '查趨勢']:
             logger.info("開始獲取油價趨勢資訊")
             
-            # 暫時調用 get_oil_price_trend 函數來測試抓取和繪圖邏輯
-            trend_result = get_oil_price_trend()
+            image_filename = get_oil_price_trend()
             
-            # 這裡需要根據 get_oil_price_trend 的回傳結果來判斷回覆文字或圖片
-            # 目前 get_oil_price_trend 暫時回傳文字訊息
-            
-            logger.info("準備回覆趨勢訊息 (暫時回覆文字)")
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text=trend_result)
-            )
-            logger.info("趨勢訊息已回覆 (暫時回覆文字)")
+            if image_filename.startswith("Error:"):
+                # 如果 get_oil_price_trend 返回錯誤訊息
+                reply_message = image_filename.replace("Error: ", "")
+                logger.info(f"獲取油價趨勢失敗，回覆文字訊息: {reply_message}")
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text=reply_message)
+                )
+            else:
+                # 如果成功生成圖片，回覆圖片訊息
+                # 在 Render 上，你需要設定靜態檔案服務的 URL
+                # 這裡先使用一個佔位符 URL
+                # TODO: 替換為實際的靜態檔案 URL 前綴
+                base_url = os.getenv('RENDER_STATIC_URL', 'YOUR_RENDER_STATIC_URL_HERE') 
+                image_url = f'{base_url}/static/{image_filename}'
+                
+                logger.info(f"準備回覆油價趨勢圖表: {image_url}")
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    ImageSendMessage(original_content_url=image_url, preview_image_url=image_url)
+                )
+                logger.info("油價趨勢圖表訊息已回覆")
             
         else:
             logger.info(f"收到未處理的訊息: {event.message.text}")
