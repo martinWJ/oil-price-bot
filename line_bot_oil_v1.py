@@ -17,7 +17,7 @@ V4 - 預測分析功能
 
 import os
 import logging
-from flask import Flask, request, abort, send_from_directory
+from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageSendMessage
@@ -28,16 +28,32 @@ import re
 import json
 import matplotlib.pyplot as plt
 import numpy as np
+from io import BytesIO
+# import base64 # 不再需要 base64
+
+# Import ImageKit SDK
+from imagekitio import ImageKit
 
 # 設定 logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__, static_folder='static')
+app = Flask(__name__)
 
 # 設定 LINE Channel Access Token 和 Channel Secret
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
+
+# Imgur 相關配置 (移除)
+# IMGUR_CLIENT_ID = os.getenv('IMGUR_CLIENT_ID')
+
+# ImageKit.io 相關配置
+IMAGEKIT_PUBLIC_KEY = os.getenv('IMAGEKIT_PUBLIC_KEY')
+IMAGEKIT_PRIVATE_KEY = os.getenv('IMAGEKIT_PRIVATE_KEY')
+IMAGEKIT_URL_ENDPOINT = os.getenv('IMAGEKIT_URL_ENDPOINT')
+
+# 初始化 ImageKit
+imagekit = ImageKit(public_key=IMAGEKIT_PUBLIC_KEY, private_key=IMAGEKIT_PRIVATE_KEY, url_endpoint=IMAGEKIT_URL_ENDPOINT)
 
 def get_current_week_dates():
     today = datetime.now()
@@ -148,26 +164,16 @@ def get_oil_price_trend():
             plt.tight_layout()
             
             # 將圖表儲存到一個 BytesIO 物件中 (in-memory)
-            from io import BytesIO
             buffer = BytesIO()
             plt.savefig(buffer, format='png')
             buffer.seek(0) # 將指標移回檔案開頭
             
             plt.close() # 關閉圖形以釋放記憶體
             
-            # 將圖表儲存到靜態檔案目錄
-            image_filename = f'oil_price_trend_{datetime.now().strftime("%Y%m%d%H%M%S")}.png'
-            image_path = os.path.join(app.static_folder, image_filename)
+            logger.info("油價趨勢圖表已生成到記憶體")
             
-            # 確保靜態檔案目錄存在
-            if not os.path.exists(app.static_folder):
-                os.makedirs(app.static_folder)
-                
-            plt.savefig(image_path)
-            logger.info(f"油價趨勢圖表已儲存至 {image_path}")
-            
-            # 返回圖片檔案名稱，以便後續生成 URL
-            return image_filename
+            # 返回圖片數據 (BytesIO 物件)
+            return buffer
             
         except json.JSONDecodeError as e:
             logger.error(f"解析油價或日期資料時發生錯誤: {str(e)}")
@@ -180,6 +186,28 @@ def get_oil_price_trend():
         logger.error(f"生成油價趨勢圖表時發生錯誤: {str(e)}")
         return f"Error: 生成油價趨勢圖表時發生錯誤: {str(e)}"
 
+def upload_image_to_imagekit(image_buffer):
+    """將圖片上傳到 ImageKit.io 並返回圖片 URL"""
+    if not IMAGEKIT_PUBLIC_KEY or not IMAGEKIT_PRIVATE_KEY or not IMAGEKIT_URL_ENDPOINT:
+        logger.error("ImageKit.io 環境變數未設定")
+        return None
+
+    try:
+        # ImageKit.io SDK 上傳檔案
+        response = imagekit.upload_file(file=image_buffer, file_name=f'oil_price_trend_{datetime.now().strftime("%Y%m%d%H%M%S")}.png')
+
+        if response and response['success']:
+            image_url = response['url']
+            logger.info(f"圖片成功上傳到 ImageKit.io: {image_url}")
+            return image_url
+        else:
+            logger.error(f"圖片上傳到 ImageKit.io 失敗: {response}")
+            return None
+
+    except Exception as e:
+        logger.error(f"上傳圖片到 ImageKit.io 時發生錯誤: {str(e)}")
+        return None
+
 @app.route("/", methods=['GET'])
 def index():
     return "油價查詢機器人服務正常運作中"
@@ -187,10 +215,6 @@ def index():
 @app.route("/health", methods=['GET'])
 def health():
     return "OK", 200
-
-@app.route('/static/<path:filename>')
-def static_files(filename):
-    return send_from_directory(app.static_folder, filename)
 
 @app.route("/webhook", methods=['POST'])
 def callback():
@@ -209,51 +233,81 @@ def callback():
         abort(500)
     return 'OK', 200
 
+def handle_oil_price_query(event):
+    logger.info("開始獲取油價資訊")
+    oil_price_info = get_oil_price()
+    logger.info(f"獲取到的油價資訊: {oil_price_info}")
+
+    logger.info("準備回覆訊息")
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=oil_price_info)
+    )
+    logger.info("訊息已回覆")
+
+def handle_oil_trend_query(event):
+    logger.info("開始獲取油價趨勢資訊並生成圖表")
+
+    image_buffer = get_oil_price_trend()
+
+    if isinstance(image_buffer, str) and image_buffer.startswith("Error:"):
+        # 如果 get_oil_price_trend 返回錯誤訊息
+        reply_message = image_buffer.replace("Error: ", "")
+        logger.info(f"獲取油價趨勢失敗，回覆文字訊息: {reply_message}")
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=reply_message)
+        )
+    elif image_buffer:
+         # 如果成功生成圖片緩衝區，則上傳到 ImageKit.io
+         logger.info("準備上傳油價趨勢圖表到 ImageKit.io")
+         image_url = upload_image_to_imagekit(image_buffer)
+
+         if image_url:
+             # 如果成功上傳並取得 URL，回覆圖片訊息
+             logger.info(f"準備回覆油價趨勢圖表 (ImageKit.io URL): {image_url}")
+             line_bot_api.reply_message(
+                 event.reply_token,
+                 ImageSendMessage(original_content_url=image_url, preview_image_url=image_url)
+             )
+             logger.info("油價趨勢圖表訊息已回覆")
+         else:
+             # 如果上傳失敗
+             logger.error("上傳油價趨勢圖表到 ImageKit.io 失敗")
+             line_bot_api.reply_message(
+                 event.reply_token,
+                 TextSendMessage(text="無法上傳油價趨勢圖表，請稍後再試")
+             )
+    else:
+        # 如果生成圖表失敗 (但沒有返回錯誤字串)
+        logger.error("生成油價趨勢圖表失敗")
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text="生成油價趨勢圖表失敗，請稍後再試")
+        )
+
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     logger.info(f"收到使用者訊息: {event.message.text}")
     try:
-        if event.message.text in ['油價', '查詢油價', '查油價']:
-            logger.info("開始獲取油價資訊")
-            oil_price_info = get_oil_price()
-            logger.info(f"獲取到的油價資訊: {oil_price_info}")
-            
-            logger.info("準備回覆訊息")
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text=oil_price_info)
-            )
-            logger.info("訊息已回覆")
-        elif event.message.text in ['油價趨勢', '查詢油價趨勢', '查趨勢']:
-            logger.info("開始獲取油價趨勢資訊")
-            
-            image_filename = get_oil_price_trend()
-            
-            if image_filename.startswith("Error:"):
-                # 如果 get_oil_price_trend 返回錯誤訊息
-                reply_message = image_filename.replace("Error: ", "")
-                logger.info(f"獲取油價趨勢失敗，回覆文字訊息: {reply_message}")
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    TextSendMessage(text=reply_message)
-                )
-            else:
-                # 如果成功生成圖片，回覆圖片訊息
-                # 在 Render 上，你需要設定靜態檔案服務的 URL
-                # 這裡先使用一個佔位符 URL
-                # TODO: 替換為實際的靜態檔案 URL 前綴
-                base_url = os.getenv('RENDER_STATIC_URL', 'YOUR_RENDER_STATIC_URL_HERE') 
-                image_url = f'{base_url}/static/{image_filename}'
-                
-                logger.info(f"準備回覆油價趨勢圖表: {image_url}")
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    ImageSendMessage(original_content_url=image_url, preview_image_url=image_url)
-                )
-                logger.info("油價趨勢圖表訊息已回覆")
-            
-        else:
-            logger.info(f"收到未處理的訊息: {event.message.text}")
+        user_message_text = event.message.text
+
+        match user_message_text:
+            case '查油價' | '查詢油價' | '油價':
+                logger.info(f"處理指令: {user_message_text}")
+                handle_oil_price_query(event)
+            case '查趨勢' | '查詢油價趨勢' | '油價趨勢':
+                logger.info(f"處理指令: {user_message_text}")
+                handle_oil_trend_query(event)
+            case _:
+                # 處理未知的訊息
+                logger.info(f"收到未處理的訊息: {user_message_text}")
+                # 可以選擇回覆一個預設訊息，或不做任何回覆
+                # line_bot_api.reply_message(
+                #     event.reply_token,
+                #     TextSendMessage(text="抱歉，我不明白您的意思。")
+                # )
+
     except Exception as e:
         logger.error(f"處理訊息時發生錯誤: {str(e)}")
         try:
