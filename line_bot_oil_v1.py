@@ -132,66 +132,69 @@ def get_oil_price_trend():
         logger.info(f"網頁回應狀態碼: {response.status_code}")
         logger.info(f"網頁內容長度: {len(response.text)}")
         
-        # 使用正則表達式找到油價資料和日期資料
-        series_pattern = r'var\s+series\s*=\s*(\[.*?\]);'
-        categories_pattern = r'var\s+categories\s*=\s*(\[.*?\]);'
+        # 使用 BeautifulSoup 解析網頁
+        soup = BeautifulSoup(response.text, 'html.parser')
         
-        series_match = re.search(series_pattern, response.text, re.DOTALL)
-        categories_match = re.search(categories_pattern, response.text, re.DOTALL)
-        
-        if not series_match:
-            logger.error("找不到油價資料")
-            logger.debug(f"網頁內容: {response.text[:1000]}")
+        # 找到包含油價資料的表格
+        table = soup.find('table', {'id': 'gvHistoryPrice'})
+        if not table:
+            logger.error("找不到油價資料表格")
             return "無法取得油價趨勢資訊"
             
-        if not categories_match:
-            logger.error("找不到日期資料")
-            logger.debug(f"網頁內容: {response.text[:1000]}")
+        # 解析表格資料
+        rows = table.find_all('tr')[1:]  # 跳過標題列
+        dates = []
+        prices_92 = []
+        prices_95 = []
+        prices_98 = []
+        prices_diesel = []
+        
+        for row in rows:
+            cols = row.find_all('td')
+            if len(cols) >= 5:
+                date = cols[0].text.strip()
+                price_92 = float(cols[1].text.strip())
+                price_95 = float(cols[2].text.strip())
+                price_98 = float(cols[3].text.strip())
+                price_diesel = float(cols[4].text.strip())
+                
+                dates.append(date)
+                prices_92.append(price_92)
+                prices_95.append(price_95)
+                prices_98.append(price_98)
+                prices_diesel.append(price_diesel)
+        
+        if not dates:
+            logger.error("無法解析油價資料")
             return "無法取得油價趨勢資訊"
             
-        try:
-            series_data = json.loads(series_match.group(1))
-            categories_data = json.loads(categories_match.group(1))
-            
-            logger.info(f"成功解析油價資料: {series_data}")
-            logger.info(f"成功解析日期資料: {categories_data}")
-            
-            if not series_data or not categories_data:
-                logger.error("油價或日期資料為空")
-                return "油價趨勢資料為空，請稍後再試"
-                
-            if len(series_data[0]['data']) != len(categories_data):
-                logger.error(f"油價資料長度 ({len(series_data[0]['data'])}) 與日期資料長度 ({len(categories_data)}) 不一致")
-                return "油價趨勢資料格式不符，請稍後再試"
-                
-            # 使用 matplotlib 繪製趨勢圖
-            plt.figure(figsize=(10, 6))
-            
-            for oil_type_data in series_data:
-                oil_type = oil_type_data['name']
-                prices = oil_type_data['data']
-                plt.plot(categories_data, prices, marker='o', label=oil_type)
-                
-            plt.xlabel('日期')
-            plt.ylabel('價格 (新台幣元/公升)')
-            plt.title('中油油價趨勢')
-            plt.xticks(rotation=45)
-            plt.legend()
-            plt.tight_layout()
-            
-            # 將圖表儲存到一個 BytesIO 物件中 (in-memory)
-            buffer = BytesIO()
-            plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
-            buffer.seek(0)
-            
-            plt.close()
-            
-            logger.info("油價趨勢圖表已生成到記憶體")
-            return buffer
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"解析油價或日期資料時發生錯誤: {str(e)}")
-            return "Error: 解析油價趨勢資料時發生錯誤，請稍後再試"
+        logger.info(f"成功解析油價資料，共 {len(dates)} 筆")
+        
+        # 使用 matplotlib 繪製趨勢圖
+        plt.figure(figsize=(10, 6))
+        
+        plt.plot(dates, prices_92, marker='o', label='92無鉛汽油')
+        plt.plot(dates, prices_95, marker='o', label='95無鉛汽油')
+        plt.plot(dates, prices_98, marker='o', label='98無鉛汽油')
+        plt.plot(dates, prices_diesel, marker='o', label='超級柴油')
+        
+        plt.xlabel('日期')
+        plt.ylabel('價格 (新台幣元/公升)')
+        plt.title('中油油價趨勢')
+        plt.xticks(rotation=45)
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        
+        # 將圖表儲存到一個 BytesIO 物件中 (in-memory)
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
+        buffer.seek(0)
+        
+        plt.close()
+        
+        logger.info("油價趨勢圖表已生成到記憶體")
+        return buffer
         
     except requests.exceptions.RequestException as e:
         logger.error(f"抓取網頁時發生錯誤: {str(e)}")
