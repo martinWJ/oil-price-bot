@@ -292,21 +292,20 @@ def handle_message(event):
     try:
         user_message_text = event.message.text
 
-        match user_message_text:
-            case '查油價' | '查詢油價' | '油價':
-                logger.info(f"處理指令: {user_message_text}")
-                handle_oil_price_query(event)
-            case '查趨勢' | '查詢油價趨勢' | '油價趨勢':
-                logger.info(f"處理指令: {user_message_text}")
-                handle_oil_trend_query(event)
-            case _:
-                # 處理未知的訊息
-                logger.info(f"收到未處理的訊息: {user_message_text}")
-                # 可以選擇回覆一個預設訊息，或不做任何回覆
-                # line_bot_api.reply_message(
-                #     event.reply_token,
-                #     TextSendMessage(text="抱歉，我不明白您的意思。")
-                # )
+        # 處理文字訊息
+        if user_message_text == "查油價":
+            handle_oil_price_query(event)
+        elif user_message_text == "查趨勢":
+            handle_oil_trend_query(event)
+        elif user_message_text == "查歷史":
+            handle_oil_history_query(event)
+        elif user_message_text == "查說明":
+            handle_help_query(event)
+        else:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="請輸入「查油價」、「查趨勢」、「查歷史」或「查說明」")
+            )
 
     except Exception as e:
         logger.error(f"處理訊息時發生錯誤: {str(e)}")
