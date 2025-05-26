@@ -127,7 +127,7 @@ def get_oil_price_trend():
         }
         response = requests.get(url, headers=headers)
         response.encoding = 'utf-8'
-        response.raise_for_status() # 檢查 HTTP 請求是否成功
+        response.raise_for_status()
         
         logger.info(f"網頁回應狀態碼: {response.status_code}")
         logger.info(f"網頁內容長度: {len(response.text)}")
@@ -141,11 +141,12 @@ def get_oil_price_trend():
         
         if not series_match:
             logger.error("找不到油價資料")
-            logger.debug(f"網頁內容: {response.text[:1000]}")  # 只記錄前1000個字元
+            logger.debug(f"網頁內容: {response.text[:1000]}")
             return "無法取得油價趨勢資訊"
             
         if not categories_match:
             logger.error("找不到日期資料")
+            logger.debug(f"網頁內容: {response.text[:1000]}")
             return "無法取得油價趨勢資訊"
             
         try:
@@ -181,13 +182,11 @@ def get_oil_price_trend():
             # 將圖表儲存到一個 BytesIO 物件中 (in-memory)
             buffer = BytesIO()
             plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
-            buffer.seek(0) # 將指標移回檔案開頭
+            buffer.seek(0)
             
-            plt.close() # 關閉圖形以釋放記憶體
+            plt.close()
             
             logger.info("油價趨勢圖表已生成到記憶體")
-            
-            # 返回圖片數據 (BytesIO 物件)
             return buffer
             
         except json.JSONDecodeError as e:
@@ -287,39 +286,39 @@ def handle_oil_price_query(event):
 def handle_oil_trend_query(event):
     logger.info("開始獲取油價趨勢資訊並生成圖表")
 
-    image_buffer = get_oil_price_trend()
+    result = get_oil_price_trend()
 
-    if isinstance(image_buffer, str) and image_buffer.startswith("Error:"):
+    if isinstance(result, str) and result.startswith("Error:"):
         # 如果 get_oil_price_trend 返回錯誤訊息
-        reply_message = image_buffer.replace("Error: ", "")
+        reply_message = result.replace("Error: ", "")
         logger.info(f"獲取油價趨勢失敗，回覆文字訊息: {reply_message}")
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text=reply_message)
         )
-    elif image_buffer:
-         # 如果成功生成圖片緩衝區，則上傳到 ImageKit.io
-         logger.info("準備上傳油價趨勢圖表到 ImageKit.io")
-         image_url = upload_image_to_imagekit(image_buffer)
+    elif isinstance(result, BytesIO):
+        # 如果成功生成圖片緩衝區，則上傳到 ImageKit.io
+        logger.info("準備上傳油價趨勢圖表到 ImageKit.io")
+        image_url = upload_image_to_imagekit(result)
 
-         if image_url:
-             # 如果成功上傳並取得 URL，回覆圖片訊息
-             logger.info(f"準備回覆油價趨勢圖表 (ImageKit.io URL): {image_url}")
-             line_bot_api.reply_message(
-                 event.reply_token,
-                 ImageSendMessage(original_content_url=image_url, preview_image_url=image_url)
-             )
-             logger.info("油價趨勢圖表訊息已回覆")
-         else:
-             # 如果上傳失敗
-             logger.error("上傳油價趨勢圖表到 ImageKit.io 失敗")
-             line_bot_api.reply_message(
-                 event.reply_token,
-                 TextSendMessage(text="無法上傳油價趨勢圖表，請稍後再試")
-             )
+        if image_url:
+            # 如果成功上傳並取得 URL，回覆圖片訊息
+            logger.info(f"準備回覆油價趨勢圖表 (ImageKit.io URL): {image_url}")
+            line_bot_api.reply_message(
+                event.reply_token,
+                ImageSendMessage(original_content_url=image_url, preview_image_url=image_url)
+            )
+            logger.info("油價趨勢圖表訊息已回覆")
+        else:
+            # 如果上傳失敗
+            logger.error("上傳油價趨勢圖表到 ImageKit.io 失敗")
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="無法上傳油價趨勢圖表，請稍後再試")
+            )
     else:
         # 如果生成圖表失敗 (但沒有返回錯誤字串)
-        logger.error("生成油價趨勢圖表失敗")
+        logger.error(f"生成油價趨勢圖表失敗，返回類型: {type(result)}")
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text="生成油價趨勢圖表失敗，請稍後再試")
