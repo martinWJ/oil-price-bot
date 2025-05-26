@@ -129,6 +129,9 @@ def get_oil_price_trend():
         response.encoding = 'utf-8'
         response.raise_for_status() # 檢查 HTTP 請求是否成功
         
+        logger.info(f"網頁回應狀態碼: {response.status_code}")
+        logger.info(f"網頁內容長度: {len(response.text)}")
+        
         # 使用正則表達式找到油價資料和日期資料
         series_pattern = r'var\s+series\s*=\s*(\[.*?\]);'
         categories_pattern = r'var\s+categories\s*=\s*(\[.*?\]);'
@@ -136,18 +139,30 @@ def get_oil_price_trend():
         series_match = re.search(series_pattern, response.text, re.DOTALL)
         categories_match = re.search(categories_pattern, response.text, re.DOTALL)
         
-        if not series_match or not categories_match:
-            logger.error("找不到油價或日期資料")
+        if not series_match:
+            logger.error("找不到油價資料")
+            logger.debug(f"網頁內容: {response.text[:1000]}")  # 只記錄前1000個字元
+            return "無法取得油價趨勢資訊"
+            
+        if not categories_match:
+            logger.error("找不到日期資料")
             return "無法取得油價趨勢資訊"
             
         try:
             series_data = json.loads(series_match.group(1))
             categories_data = json.loads(categories_match.group(1))
             
-            if not series_data or not categories_data or len(series_data[0]['data']) != len(categories_data):
-                 logger.error("油價或日期資料格式不符或長度不一致")
-                 return "油價趨勢資料格式不符，請稍後再試"
-                 
+            logger.info(f"成功解析油價資料: {series_data}")
+            logger.info(f"成功解析日期資料: {categories_data}")
+            
+            if not series_data or not categories_data:
+                logger.error("油價或日期資料為空")
+                return "油價趨勢資料為空，請稍後再試"
+                
+            if len(series_data[0]['data']) != len(categories_data):
+                logger.error(f"油價資料長度 ({len(series_data[0]['data'])}) 與日期資料長度 ({len(categories_data)}) 不一致")
+                return "油價趨勢資料格式不符，請稍後再試"
+                
             # 使用 matplotlib 繪製趨勢圖
             plt.figure(figsize=(10, 6))
             
@@ -165,7 +180,7 @@ def get_oil_price_trend():
             
             # 將圖表儲存到一個 BytesIO 物件中 (in-memory)
             buffer = BytesIO()
-            plt.savefig(buffer, format='png')
+            plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
             buffer.seek(0) # 將指標移回檔案開頭
             
             plt.close() # 關閉圖形以釋放記憶體
@@ -193,15 +208,39 @@ def upload_image_to_imagekit(image_buffer):
         return None
 
     try:
-        # ImageKit.io SDK 上傳檔案
-        response = imagekit.upload_file(file=image_buffer, file_name=f'oil_price_trend_{datetime.now().strftime("%Y%m%d%H%M%S")}.png')
+        # 檢查 image_buffer 是否為 BytesIO 物件
+        if not isinstance(image_buffer, BytesIO):
+            logger.error(f"image_buffer 類型錯誤: {type(image_buffer)}")
+            return None
 
-        if response and response['success']:
-            image_url = response['url']
+        # 檢查 image_buffer 是否有內容
+        if image_buffer.getbuffer().nbytes == 0:
+            logger.error("image_buffer 是空的")
+            return None
+
+        # 生成檔案名稱
+        file_name = f'oil_price_trend_{datetime.now().strftime("%Y%m%d%H%M%S")}.png'
+        logger.info(f"準備上傳檔案: {file_name}")
+
+        # ImageKit.io SDK 上傳檔案
+        response = imagekit.upload_file(
+            file=image_buffer,
+            file_name=file_name,
+            options={
+                "response_fields": ["url"],
+                "use_unique_file_name": True
+            }
+        )
+
+        logger.info(f"ImageKit.io 回應: {response}")
+
+        if response and response.get('success'):
+            image_url = response.get('url')
             logger.info(f"圖片成功上傳到 ImageKit.io: {image_url}")
             return image_url
         else:
-            logger.error(f"圖片上傳到 ImageKit.io 失敗: {response}")
+            error_message = response.get('error', '未知錯誤') if response else '無回應'
+            logger.error(f"圖片上傳到 ImageKit.io 失敗: {error_message}")
             return None
 
     except Exception as e:
