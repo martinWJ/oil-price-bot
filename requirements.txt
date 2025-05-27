@@ -1,5 +1,5 @@
 flask==2.0.1
-line-bot-sdk==2.0.0
+line-bot-sdk==3.17.1
 requests==2.26.0
 beautifulsoup4==4.9.3
 matplotlib==3.4.3
