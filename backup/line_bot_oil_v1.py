@@ -38,9 +38,7 @@ import matplotlib
 matplotlib.rc('font', family='Microsoft JhengHei')
 matplotlib.rc('axes', unicode_minus=False)
 
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+import undetected_chromedriver as uc
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
@@ -132,18 +130,18 @@ def get_oil_price_trend():
     try:
         url = 'https://www.cpc.com.tw/historyprice.aspx?n=2890'
         logger.info(f"開始抓取油價趨勢資料，URL: {url}")
-        chrome_options = Options()
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-        chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36')
-        chromedriver_path = os.path.join(os.path.dirname(__file__), 'chromedriver.exe')
-        logger.info(f"ChromeDriver 路徑: {chromedriver_path}")
-        service = Service(executable_path=chromedriver_path)
-        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
+        # 設定 Chrome 選項
+        options = uc.ChromeOptions()
+        options.add_argument('--headless')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        
+        # 初始化 undetected-chromedriver
+        driver = uc.Chrome(options=options)
         logger.info("已初始化 Chrome WebDriver")
+        
         try:
             driver.get(url)
             logger.info("已開啟網頁")
@@ -249,117 +247,88 @@ def upload_image_to_imagekit(image_buffer):
             file=image_buffer,
             file_name=file_name,
             options={
-                "response_fields": ["url"],
-                "use_unique_file_name": True
+                "response_fields": ["is_private_file", "tags"],
+                "tags": ["oil-price", "trend"]
             }
         )
-
-        logger.info(f"ImageKit.io 回應: {response}")
-
-        if response and response.get('success'):
-            image_url = response.get('url')
-            logger.info(f"圖片成功上傳到 ImageKit.io: {image_url}")
-            return image_url
-        else:
-            error_message = response.get('error', '未知錯誤') if response else '無回應'
-            logger.error(f"圖片上傳到 ImageKit.io 失敗: {error_message}")
-            return None
-
+        logger.info(f"圖片上傳成功: {response}")
+        return response.url
     except Exception as e:
         logger.error(f"上傳圖片到 ImageKit.io 時發生錯誤: {str(e)}")
         return None
 
 @app.route("/", methods=['GET'])
 def index():
-    return "油價查詢機器人服務正常運作中"
+    return "油價小幫手 LINE Bot 服務正常運作中"
 
 @app.route("/health", methods=['GET'])
 def health():
-    return "OK", 200
+    return "OK"
 
 @app.route("/webhook", methods=['POST'])
 def callback():
+    # 取得 X-Line-Signature header 值
     signature = request.headers['X-Line-Signature']
+
+    # 取得請求內容
     body = request.get_data(as_text=True)
-    logger.info("收到 LINE 訊息")
-    logger.info(f"Request body: {body}")
-    
+    logger.info("Request body: " + body)
+
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
-        logger.error("Invalid signature. Please check your channel access token/channel secret.")
         abort(400)
-    except Exception as e:
-        logger.error(f"處理訊息時發生錯誤: {str(e)}")
-        abort(500)
-    return 'OK', 200
+
+    return 'OK'
 
 def handle_oil_price_query(event):
-    logger.info("開始獲取油價資訊")
-    oil_price_info = get_oil_price()
-    logger.info(f"獲取到的油價資訊: {oil_price_info}")
-
-    logger.info("準備回覆訊息")
+    """處理油價查詢"""
+    price_info = get_oil_price()
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text=oil_price_info)
+        TextSendMessage(text=price_info)
     )
-    logger.info("訊息已回覆")
 
 def handle_oil_trend_query(event):
-    logger.info("開始獲取油價趨勢資訊並生成圖表")
-
-    result = get_oil_price_trend()
-
-    if isinstance(result, str) and result.startswith("Error:"):
-        # 如果 get_oil_price_trend 返回錯誤訊息
-        reply_message = result.replace("Error: ", "")
-        logger.info(f"獲取油價趨勢失敗，回覆文字訊息: {reply_message}")
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=reply_message)
-        )
-    elif isinstance(result, BytesIO):
-        # 如果成功生成圖片緩衝區，則上傳到 ImageKit.io
-        logger.info("準備上傳油價趨勢圖表到 ImageKit.io")
-        image_url = upload_image_to_imagekit(result)
-
+    """處理油價趨勢查詢"""
+    # 生成趨勢圖
+    trend_image = get_oil_price_trend()
+    if trend_image:
+        # 上傳到 ImageKit.io
+        image_url = upload_image_to_imagekit(trend_image)
         if image_url:
-            # 如果成功上傳並取得 URL，回覆圖片訊息
-            logger.info(f"準備回覆油價趨勢圖表 (ImageKit.io URL): {image_url}")
+            # 回傳圖片訊息
             line_bot_api.reply_message(
                 event.reply_token,
-                ImageSendMessage(original_content_url=image_url, preview_image_url=image_url)
+                ImageSendMessage(
+                    original_content_url=image_url,
+                    preview_image_url=image_url
+                )
             )
-            logger.info("油價趨勢圖表訊息已回覆")
         else:
-            # 如果上傳失敗
-            logger.error("上傳油價趨勢圖表到 ImageKit.io 失敗")
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="無法上傳油價趨勢圖表，請稍後再試")
+                TextSendMessage(text="無法上傳趨勢圖，請稍後再試")
             )
     else:
-        # 如果生成圖表失敗 (但沒有返回錯誤字串)
-        logger.error(f"生成油價趨勢圖表失敗，返回類型: {type(result)}")
         line_bot_api.reply_message(
             event.reply_token,
-            TextSendMessage(text="生成油價趨勢圖表失敗，請稍後再試")
+            TextSendMessage(text="無法生成趨勢圖，請稍後再試")
         )
 
 def handle_oil_history_query(event):
+    """處理歷史油價查詢"""
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text="歷史查詢功能開發中，敬請期待！")
+        TextSendMessage(text="歷史油價查詢功能開發中，敬請期待！")
     )
 
 def handle_help_query(event):
-    help_text = """油價查詢機器人使用說明：
-1. 輸入「查油價」：查詢本周最新油價
-2. 輸入「查趨勢」：查看油價趨勢圖表
-3. 輸入「查歷史」：查詢歷史油價（開發中）
-4. 輸入「查說明」：顯示此說明"""
-    
+    """處理幫助查詢"""
+    help_text = "油價小幫手使用說明：\n\n"
+    help_text += "1. 輸入「油價」或「查詢油價」：查詢本周最新油價\n"
+    help_text += "2. 輸入「趨勢」或「油價趨勢」：查看油價趨勢圖\n"
+    help_text += "3. 輸入「幫助」或「說明」：顯示此說明\n"
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=help_text)
@@ -367,36 +336,19 @@ def handle_help_query(event):
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    logger.info(f"收到使用者訊息: {event.message.text}")
-    try:
-        user_message_text = event.message.text
-
-        # 處理文字訊息
-        if user_message_text == "查油價":
-            handle_oil_price_query(event)
-        elif user_message_text == "查趨勢":
-            handle_oil_trend_query(event)
-        elif user_message_text == "查歷史":
-            handle_oil_history_query(event)
-        elif user_message_text == "查說明":
-            handle_help_query(event)
-        else:
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="請輸入「查油價」、「查趨勢」、「查歷史」或「查說明」")
-            )
-
-    except Exception as e:
-        logger.error(f"處理訊息時發生錯誤: {str(e)}")
-        try:
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="處理訊息時發生錯誤，請稍後再試")
-            )
-        except Exception as reply_error:
-            logger.error(f"回覆錯誤訊息時發生錯誤: {str(reply_error)}")
-
-if __name__ == "__main__":
-    port = int(os.getenv('PORT', 5000))
-    logger.info(f"服務啟動於 port {port}")
-    app.run(host='0.0.0.0', port=port)
+    """處理文字訊息"""
+    text = event.message.text.lower()
+    
+    if text in ['油價', '查詢油價']:
+        handle_oil_price_query(event)
+    elif text in ['趨勢', '油價趨勢']:
+        handle_oil_trend_query(event)
+    elif text in ['歷史', '歷史油價']:
+        handle_oil_history_query(event)
+    elif text in ['幫助', '說明', 'help']:
+        handle_help_query(event)
+    else:
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text="請輸入「油價」、「趨勢」或「幫助」來使用本服務")
+        ) 

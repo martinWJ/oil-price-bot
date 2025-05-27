@@ -52,20 +52,14 @@ def get_oil_price_trend():
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
-        
-        # 設定 Chrome 執行檔路徑
-        chrome_path = '/usr/bin/google-chrome'
-        if not os.path.exists(chrome_path):
-            chrome_path = '/usr/bin/chromium-browser'
-        if not os.path.exists(chrome_path):
-            chrome_path = '/usr/bin/chromium'
-        
-        logger.info(f"使用 Chrome 執行檔路徑: {chrome_path}")
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-software-rasterizer')
+        options.add_argument('--disable-setuid-sandbox')
+        options.add_argument('--single-process')
         
         # 初始化 undetected-chromedriver
         driver = uc.Chrome(
             options=options,
-            driver_executable_path=chrome_path,
             version_main=114  # 指定 Chrome 版本
         )
         logger.info("已初始化 Chrome WebDriver")
@@ -73,10 +67,10 @@ def get_oil_price_trend():
         try:
             driver.get(url)
             logger.info("已開啟網頁")
-            wait = WebDriverWait(driver, 10)
+            wait = WebDriverWait(driver, 20)  # 增加等待時間
             table = wait.until(EC.presence_of_element_located((By.ID, 'tbHistoryPrice')))
             logger.info("表格已載入")
-            time.sleep(2)
+            time.sleep(3)  # 增加等待時間
             html = driver.page_source
             soup = BeautifulSoup(html, 'html.parser')
             table = soup.find('table', {'id': 'tbHistoryPrice'})
@@ -148,3 +142,75 @@ def get_oil_price_trend():
     except Exception as e:
         logger.error(f"生成油價趨勢圖表時發生錯誤: {str(e)}")
         return None 
+
+@app.route("/callback", methods=['POST'])
+def callback():
+    # 取得 X-Line-Signature header 值
+    signature = request.headers['X-Line-Signature']
+
+    # 取得請求內容
+    body = request.get_data(as_text=True)
+    logger.info("Request body: " + body)
+
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+
+    return 'OK'
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    text = event.message.text
+    logger.info(f"收到訊息: {text}")
+    
+    if text == "趨勢":
+        try:
+            buffer = get_oil_price_trend()
+            if buffer:
+                # 上傳圖片到 ImageKit
+                result = imagekit.upload_file(
+                    file=buffer,
+                    file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
+                    options={
+                        "response_fields": ["url"],
+                        "tags": ["oil_price", "trend"]
+                    }
+                )
+                
+                if result and 'url' in result:
+                    # 回傳圖片訊息
+                    line_bot_api.reply_message(
+                        event.reply_token,
+                        ImageSendMessage(
+                            original_content_url=result['url'],
+                            preview_image_url=result['url']
+                        )
+                    )
+                    logger.info("已回傳油價趨勢圖")
+                else:
+                    line_bot_api.reply_message(
+                        event.reply_token,
+                        TextSendMessage(text="無法上傳圖片，請稍後再試")
+                    )
+                    logger.error("圖片上傳失敗")
+            else:
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text="無法取得油價趨勢資料，請稍後再試")
+                )
+                logger.error("無法取得油價趨勢資料")
+        except Exception as e:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text=f"發生錯誤：{str(e)}")
+            )
+            logger.error(f"處理趨勢請求時發生錯誤: {str(e)}")
+    else:
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text="請輸入「趨勢」查看油價趨勢圖")
+        )
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000))) 
