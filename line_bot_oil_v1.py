@@ -1,3 +1,46 @@
+import os
+import logging
+from flask import Flask, request, abort
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageSendMessage
+import requests
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
+import re
+import json
+import matplotlib.pyplot as plt
+import numpy as np
+from io import BytesIO
+from imagekitio import ImageKit
+import matplotlib
+matplotlib.rc('font', family='Microsoft JhengHei')
+matplotlib.rc('axes', unicode_minus=False)
+import undetected_chromedriver as uc
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+import time
+
+# 設定 logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 初始化 Flask 應用程式
+app = Flask(__name__)
+
+# 設定 LINE Channel Access Token 和 Channel Secret
+line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
+handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
+
+# ImageKit.io 相關配置
+IMAGEKIT_PUBLIC_KEY = os.getenv('IMAGEKIT_PUBLIC_KEY')
+IMAGEKIT_PRIVATE_KEY = os.getenv('IMAGEKIT_PRIVATE_KEY')
+IMAGEKIT_URL_ENDPOINT = os.getenv('IMAGEKIT_URL_ENDPOINT')
+
+# 初始化 ImageKit
+imagekit = ImageKit(public_key=IMAGEKIT_PUBLIC_KEY, private_key=IMAGEKIT_PRIVATE_KEY, url_endpoint=IMAGEKIT_URL_ENDPOINT)
+
 def get_oil_price_trend():
     try:
         url = 'https://www.cpc.com.tw/historyprice.aspx?n=2890'
