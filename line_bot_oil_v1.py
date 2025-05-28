@@ -167,6 +167,10 @@ def get_oil_price_trend():
             logger.error("無法取得完整的油價資料")
             return None
         
+        # 設定中文字體
+        plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'DejaVu Sans', 'sans-serif']
+        plt.rcParams['axes.unicode_minus'] = False
+        
         # 繪製圖表
         plt.figure(figsize=(10, 6))
         plt.plot(dates, prices_92, marker='o', label='92無鉛汽油')
@@ -240,7 +244,7 @@ def handle_message(event):
                     logger.info("成功取得油價趨勢圖")
                     # 上傳圖片到 ImageKit
                     result = imagekit.upload_file(
-                        file=buffer,
+                        file=buffer.getvalue(),  # 使用 getvalue() 獲取二進制數據
                         file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
                         options={
                             "response_fields": ["url"],
