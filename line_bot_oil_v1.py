@@ -16,21 +16,14 @@ from imagekitio import ImageKit
 import matplotlib
 matplotlib.use('Agg')  # 使用 Agg 後端
 
-# 安裝中文字體
-try:
-    import subprocess
-    subprocess.run(['apt-get', 'update'], check=True)
-    subprocess.run(['apt-get', 'install', '-y', 'fonts-wqy-microhei'], check=True)
-except Exception as e:
-    logger.error(f"安裝字體時發生錯誤: {str(e)}")
-
-# 設定字體
-plt.rcParams['font.family'] = ['WenQuanYi Micro Hei', 'sans-serif']
-plt.rcParams['axes.unicode_minus'] = False
-
 # 設定 logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# 設定字體
+plt.rcParams['font.family'] = ['sans-serif']
+plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
+plt.rcParams['axes.unicode_minus'] = False
 
 # 初始化 Flask 應用程式
 app = Flask(__name__)
