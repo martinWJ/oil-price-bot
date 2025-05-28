@@ -21,8 +21,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # 設定字體
-plt.rcParams['font.family'] = ['sans-serif']
-plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
+plt.rcParams['font.family'] = 'sans-serif'
+plt.rcParams['font.sans-serif'] = ['Microsoft JhengHei', 'Arial Unicode MS', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False
 
 # 初始化 Flask 應用程式
@@ -235,39 +235,46 @@ def handle_message(event):
                         image_bytes = buffer.getvalue()
                         
                         # 上傳到 ImageKit
-                        upload_result = imagekit.upload_file(
-                            file=image_bytes,
-                            file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
-                            options={
-                                "response_fields": ["url"],
-                                "tags": ["oil_price", "trend"]
-                            }
-                        )
-                        
-                        logger.info(f"ImageKit 上傳結果: {upload_result}")
-                        
-                        # 檢查上傳結果
-                        if isinstance(upload_result, dict) and 'url' in upload_result:
-                            image_url = upload_result['url']
-                            logger.info(f"成功上傳圖片到 ImageKit: {image_url}")
-                            
-                            # 回傳圖片
-                            line_bot_api.reply_message(
-                                event.reply_token,
-                                ImageSendMessage(
-                                    original_content_url=image_url,
-                                    preview_image_url=image_url
-                                )
+                        try:
+                            upload_result = imagekit.upload_file(
+                                file=image_bytes,
+                                file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
+                                options={
+                                    "response_fields": ["url"],
+                                    "tags": ["oil_price", "trend"]
+                                }
                             )
-                            logger.info("已回傳油價趨勢圖")
-                        else:
-                            logger.error(f"ImageKit 回應格式不正確或缺少 url: {upload_result}")
+                            
+                            logger.info(f"ImageKit 上傳結果: {upload_result}")
+                            
+                            # 檢查上傳結果
+                            if isinstance(upload_result, dict):
+                                image_url = upload_result.get('url')
+                                if image_url:
+                                    logger.info(f"成功上傳圖片到 ImageKit: {image_url}")
+                                    
+                                    # 回傳圖片
+                                    line_bot_api.reply_message(
+                                        event.reply_token,
+                                        ImageSendMessage(
+                                            original_content_url=image_url,
+                                            preview_image_url=image_url
+                                        )
+                                    )
+                                    logger.info("已回傳油價趨勢圖")
+                                else:
+                                    raise ValueError("上傳結果中沒有 URL")
+                            else:
+                                raise ValueError("上傳結果格式不正確")
+                                
+                        except Exception as upload_error:
+                            logger.error(f"上傳圖片時發生錯誤: {str(upload_error)}")
                             line_bot_api.reply_message(
                                 event.reply_token,
                                 TextSendMessage(text="抱歉，圖片上傳失敗，請稍後再試")
                             )
-                    except Exception as upload_error:
-                        logger.error(f"上傳圖片時發生錯誤: {str(upload_error)}")
+                    except Exception as e:
+                        logger.error(f"上傳圖片時發生錯誤: {str(e)}")
                         line_bot_api.reply_message(
                             event.reply_token,
                             TextSendMessage(text="抱歉，圖片上傳失敗，請稍後再試")
