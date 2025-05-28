@@ -16,11 +16,11 @@ from imagekitio import ImageKit
 import matplotlib
 matplotlib.rc('font', family='Microsoft JhengHei')
 matplotlib.rc('axes', unicode_minus=False)
-import undetected_chromedriver as uc
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
-import time
+# import undetected_chromedriver as uc
+# from selenium.webdriver.support.ui import WebDriverWait
+# from selenium.webdriver.support import expected_conditions as EC
+# from selenium.webdriver.common.by import By
+# import time
 
 # 設定 logging
 logging.basicConfig(level=logging.INFO)
@@ -54,107 +54,91 @@ IMAGEKIT_URL_ENDPOINT = os.getenv('IMAGEKIT_URL_ENDPOINT')
 # 初始化 ImageKit
 imagekit = ImageKit(public_key=IMAGEKIT_PUBLIC_KEY, private_key=IMAGEKIT_PRIVATE_KEY, url_endpoint=IMAGEKIT_URL_ENDPOINT)
 
+def get_current_oil_price():
+    try:
+        url = 'https://www.cpc.com.tw/'
+        logger.info(f"開始抓取當前油價，URL: {url}")
+        response = requests.get(url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        price_table = soup.find('table', {'class': 'price_table'})
+        if not price_table:
+            logger.error("找不到油價表格")
+            return None
+        rows = price_table.find_all('tr')
+        if len(rows) < 2:
+            logger.error("油價表格格式不正確")
+            return None
+        header_row = rows[0]
+        data_row = rows[1]
+        headers = [th.text.strip() for th in header_row.find_all('th')]
+        data = [td.text.strip() for td in data_row.find_all('td')]
+        if len(headers) != len(data):
+            logger.error("油價表格資料不完整")
+            return None
+        price_info = dict(zip(headers, data))
+        logger.info(f"成功抓取當前油價: {price_info}")
+        return price_info
+    except Exception as e:
+        logger.error(f"抓取當前油價時發生錯誤: {str(e)}")
+        return None
+
 def get_oil_price_trend():
     try:
         url = 'https://www.cpc.com.tw/historyprice.aspx?n=2890'
         logger.info(f"開始抓取油價趨勢資料，URL: {url}")
-        
-        # 設定 Chrome 選項
-        options = uc.ChromeOptions()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--disable-extensions')
-        options.add_argument('--disable-software-rasterizer')
-        options.add_argument('--disable-setuid-sandbox')
-        options.add_argument('--single-process')
-        
-        # 初始化 undetected-chromedriver
-        driver = uc.Chrome(
-            options=options,
-            version_main=114  # 指定 Chrome 版本
-        )
-        logger.info("已初始化 Chrome WebDriver")
-        
+        response = requests.get(url)
+        response.raise_for_status()
+        html = response.text
+        # 使用正則表達式從 JavaScript 變數中提取油價資料
+        match = re.search(r'var\s+priceData\s*=\s*(\[.*?\]);', html, re.DOTALL)
+        if not match:
+            logger.error("找不到油價資料")
+            return None
+        price_data_str = match.group(1)
         try:
-            driver.get(url)
-            logger.info("已開啟網頁")
-            wait = WebDriverWait(driver, 20)  # 增加等待時間
-            table = wait.until(EC.presence_of_element_located((By.ID, 'tbHistoryPrice')))
-            logger.info("表格已載入")
-            time.sleep(3)  # 增加等待時間
-            html = driver.page_source
-            soup = BeautifulSoup(html, 'html.parser')
-            table = soup.find('table', {'id': 'tbHistoryPrice'})
-            if not table:
-                logger.error("找不到油價資料表格")
-                return None
-            tbody = table.find('tbody')
-            if not tbody:
-                logger.error("找不到 tbody")
-                return None
-            rows = tbody.find_all('tr')
-            logger.info(f"找到 {len(rows)} 列資料")
-            dates, prices_92, prices_95, prices_98, prices_diesel = [], [], [], [], []
-            for i, row in enumerate(rows):
-                cols = row.find_all('td')
-                if len(cols) >= 5:
-                    try:
-                        date = cols[0].text.strip()
-                        price_92 = float(cols[1].text.strip())
-                        price_95 = float(cols[2].text.strip())
-                        price_98 = float(cols[3].text.strip())
-                        price_diesel = float(cols[4].text.strip())
-                        dates.append(date)
-                        prices_92.append(price_92)
-                        prices_95.append(price_95)
-                        prices_98.append(price_98)
-                        prices_diesel.append(price_diesel)
-                    except Exception as e:
-                        logger.error(f"解析第 {i+1} 列資料時發生錯誤: {e}")
-            if not dates:
-                logger.error("無法解析油價資料")
-                return None
-            # 反轉資料順序，讓X軸最左側為最舊日期
-            dates = dates[::-1]
-            prices_92 = prices_92[::-1]
-            prices_95 = prices_95[::-1]
-            prices_98 = prices_98[::-1]
-            prices_diesel = prices_diesel[::-1]
-            plt.figure(figsize=(10, 6))
-            plt.plot(dates, prices_92, marker='o', label='92無鉛汽油')
-            plt.plot(dates, prices_95, marker='o', label='95無鉛汽油')
-            plt.plot(dates, prices_98, marker='o', label='98無鉛汽油')
-            plt.plot(dates, prices_diesel, marker='o', label='超級柴油')
-            # 在每個點上標註數值
-            for x, y in zip(dates, prices_92):
-                plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
-            for x, y in zip(dates, prices_95):
-                plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
-            for x, y in zip(dates, prices_98):
-                plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
-            for x, y in zip(dates, prices_diesel):
-                plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
-            plt.xlabel('日期')
-            plt.ylabel('價格 (新台幣元/公升)')
-            plt.title('中油油價趨勢')
-            plt.xticks(rotation=45)
-            plt.legend()
-            plt.grid(True)
-            plt.tight_layout()
-            buffer = BytesIO()
-            plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
-            buffer.seek(0)
-            plt.close()
-            logger.info("油價趨勢圖表已生成到記憶體")
-            return buffer
-        finally:
-            driver.quit()
-            logger.info("已關閉 Chrome WebDriver")
+            price_data = json.loads(price_data_str)
+        except json.JSONDecodeError as e:
+            logger.error(f"解析油價資料時發生錯誤: {e}")
+            return None
+        if not price_data:
+            logger.error("油價資料為空")
+            return None
+        dates = [item[0] for item in price_data]
+        prices_92 = [float(item[1]) for item in price_data]
+        prices_95 = [float(item[2]) for item in price_data]
+        prices_98 = [float(item[3]) for item in price_data]
+        prices_diesel = [float(item[4]) for item in price_data]
+        plt.figure(figsize=(10, 6))
+        plt.plot(dates, prices_92, marker='o', label='92無鉛汽油')
+        plt.plot(dates, prices_95, marker='o', label='95無鉛汽油')
+        plt.plot(dates, prices_98, marker='o', label='98無鉛汽油')
+        plt.plot(dates, prices_diesel, marker='o', label='超級柴油')
+        # 在每個點上標註數值
+        for x, y in zip(dates, prices_92):
+            plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
+        for x, y in zip(dates, prices_95):
+            plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
+        for x, y in zip(dates, prices_98):
+            plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
+        for x, y in zip(dates, prices_diesel):
+            plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
+        plt.xlabel('日期')
+        plt.ylabel('價格 (新台幣元/公升)')
+        plt.title('中油油價趨勢')
+        plt.xticks(rotation=45)
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
+        buffer.seek(0)
+        plt.close()
+        logger.info("油價趨勢圖表已生成到記憶體")
+        return buffer
     except Exception as e:
         logger.error(f"生成油價趨勢圖表時發生錯誤: {str(e)}")
-        return None 
+        return None
 
 @app.route("/webhook", methods=['POST'])
 def callback():
@@ -232,15 +216,25 @@ def handle_message(event):
                 )
         elif text == "油價":
             logger.info("收到油價指令")
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="請輸入「趨勢」或「油價趨勢」查看油價趨勢圖")
-            )
+            price_info = get_current_oil_price()
+            if price_info:
+                message = "中油當前油價：\n"
+                for key, value in price_info.items():
+                    message += f"{key}: {value}\n"
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text=message)
+                )
+            else:
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text="抱歉，目前無法取得當前油價，請稍後再試")
+                )
         else:
             logger.info(f"收到未知指令: {text}")
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="您好！我是油價查詢機器人\n\n請輸入以下指令：\n• 趨勢：查看油價趨勢圖\n• 油價：查看使用說明")
+                TextSendMessage(text="您好！我是油價查詢機器人\n\n請輸入以下指令：\n• 油價：查詢當前油價\n• 趨勢：查看油價趨勢圖")
             )
     except Exception as e:
         logger.error(f"處理訊息時發生錯誤: {str(e)}")
