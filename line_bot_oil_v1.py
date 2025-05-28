@@ -254,8 +254,8 @@ def handle_message(event):
                         logger.info(f"ImageKit 上傳結果: {upload_result}")
                         
                         # 檢查上傳結果
-                        if isinstance(upload_result, dict) and 'url' in upload_result:
-                            image_url = upload_result['url']
+                        if upload_result and hasattr(upload_result, 'url'):
+                            image_url = upload_result.url
                             logger.info(f"成功上傳圖片到 ImageKit: {image_url}")
                             
                             # 回傳圖片
