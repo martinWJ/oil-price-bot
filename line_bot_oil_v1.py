@@ -33,6 +33,19 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
 
+# 檢查環境變數
+logger.info("檢查環境變數...")
+if not os.getenv('LINE_CHANNEL_ACCESS_TOKEN'):
+    logger.error("LINE_CHANNEL_ACCESS_TOKEN 未設置")
+if not os.getenv('LINE_CHANNEL_SECRET'):
+    logger.error("LINE_CHANNEL_SECRET 未設置")
+if not os.getenv('IMAGEKIT_PUBLIC_KEY'):
+    logger.error("IMAGEKIT_PUBLIC_KEY 未設置")
+if not os.getenv('IMAGEKIT_PRIVATE_KEY'):
+    logger.error("IMAGEKIT_PRIVATE_KEY 未設置")
+if not os.getenv('IMAGEKIT_URL_ENDPOINT'):
+    logger.error("IMAGEKIT_URL_ENDPOINT 未設置")
+
 # ImageKit.io 相關配置
 IMAGEKIT_PUBLIC_KEY = os.getenv('IMAGEKIT_PUBLIC_KEY')
 IMAGEKIT_PRIVATE_KEY = os.getenv('IMAGEKIT_PRIVATE_KEY')
@@ -147,6 +160,7 @@ def get_oil_price_trend():
 def callback():
     # 取得 X-Line-Signature header 值
     signature = request.headers['X-Line-Signature']
+    logger.info(f"收到 webhook 請求，signature: {signature}")
 
     # 取得請求內容
     body = request.get_data(as_text=True)
@@ -154,8 +168,13 @@ def callback():
 
     try:
         handler.handle(body, signature)
+        logger.info("成功處理 webhook 請求")
     except InvalidSignatureError:
+        logger.error("無效的簽名")
         abort(400)
+    except Exception as e:
+        logger.error(f"處理 webhook 請求時發生錯誤: {str(e)}")
+        abort(500)
 
     return 'OK'
 
@@ -163,12 +182,15 @@ def callback():
 def handle_message(event):
     text = event.message.text
     logger.info(f"收到訊息: {text}")
+    logger.info(f"訊息來源: {event.source.user_id}")
     
     try:
         if text in ["趨勢", "油價趨勢"]:
+            logger.info("開始處理趨勢請求")
             try:
                 buffer = get_oil_price_trend()
                 if buffer:
+                    logger.info("成功取得油價趨勢圖")
                     # 上傳圖片到 ImageKit
                     result = imagekit.upload_file(
                         file=buffer,
@@ -180,6 +202,7 @@ def handle_message(event):
                     )
                     
                     if result and 'url' in result:
+                        logger.info(f"成功上傳圖片到 ImageKit: {result['url']}")
                         # 回傳圖片訊息
                         line_bot_api.reply_message(
                             event.reply_token,
@@ -190,29 +213,31 @@ def handle_message(event):
                         )
                         logger.info("已回傳油價趨勢圖")
                     else:
+                        logger.error("圖片上傳失敗，ImageKit 回應: " + str(result))
                         line_bot_api.reply_message(
                             event.reply_token,
                             TextSendMessage(text="抱歉，圖片上傳失敗，請稍後再試")
                         )
-                        logger.error("圖片上傳失敗")
                 else:
+                    logger.error("無法取得油價趨勢資料")
                     line_bot_api.reply_message(
                         event.reply_token,
                         TextSendMessage(text="抱歉，目前無法取得油價趨勢資料，請稍後再試")
                     )
-                    logger.error("無法取得油價趨勢資料")
             except Exception as e:
+                logger.error(f"處理趨勢請求時發生錯誤: {str(e)}")
                 line_bot_api.reply_message(
                     event.reply_token,
                     TextSendMessage(text="抱歉，系統暫時無法處理您的請求，請稍後再試")
                 )
-                logger.error(f"處理趨勢請求時發生錯誤: {str(e)}")
         elif text == "油價":
+            logger.info("收到油價指令")
             line_bot_api.reply_message(
                 event.reply_token,
                 TextSendMessage(text="請輸入「趨勢」或「油價趨勢」查看油價趨勢圖")
             )
         else:
+            logger.info(f"收到未知指令: {text}")
             line_bot_api.reply_message(
                 event.reply_token,
                 TextSendMessage(text="您好！我是油價查詢機器人\n\n請輸入以下指令：\n• 趨勢：查看油價趨勢圖\n• 油價：查看使用說明")
@@ -224,8 +249,8 @@ def handle_message(event):
                 event.reply_token,
                 TextSendMessage(text="抱歉，系統發生錯誤，請稍後再試")
             )
-        except:
-            pass
+        except Exception as reply_error:
+            logger.error(f"回覆錯誤訊息時發生錯誤: {str(reply_error)}")
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000))) 
