@@ -156,7 +156,7 @@ def get_oil_price_trend():
         logger.error(f"生成油價趨勢圖表時發生錯誤: {str(e)}")
         return None 
 
-@app.route("/callback", methods=['POST'])
+@app.route("/webhook", methods=['POST'])
 def callback():
     # 取得 X-Line-Signature header 值
     signature = request.headers['X-Line-Signature']
