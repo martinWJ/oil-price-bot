@@ -87,14 +87,22 @@ def get_current_oil_price():
             logger.error("無法解析油價資訊")
             return None
             
-        # 將油價資訊轉換為字典
-        price_info = {name: f"{price}元" for name, price in matches}
-        logger.info(f"成功抓取當前油價: {price_info}")
+        # 計算本週日期範圍
+        today = datetime.now()
+        # 找到最近的週日
+        days_since_sunday = today.weekday() + 1
+        start_date = today - timedelta(days=days_since_sunday)
+        end_date = start_date + timedelta(days=6)
+        
+        # 格式化日期
+        date_range = f"{start_date.strftime('%m/%d')}~{end_date.strftime('%m/%d')}"
         
         # 格式化回覆訊息
-        message = "中油當前油價：\n"
-        for name, price in price_info.items():
-            message += f"{name}：{price}\n"
+        message = f"本周{date_range}中油最新油價資訊:\n"
+        for name, price in matches:
+            # 移除「汽油」字樣
+            name = name.replace('汽油', '')
+            message += f"{name}: {price} 元/公升\n"
             
         return message
     except Exception as e:
