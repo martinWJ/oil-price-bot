@@ -61,21 +61,51 @@ def get_current_oil_price():
         response = requests.get(url)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
-        price_table = soup.find('table', {'class': 'price_table'})
+        
+        # 尋找所有表格
+        tables = soup.find_all('table')
+        logger.info(f"找到 {len(tables)} 個表格")
+        
+        # 尋找包含油價資訊的表格
+        price_table = None
+        for table in tables:
+            # 檢查表格是否包含油價相關文字
+            if table.find(string=re.compile(r'92無鉛|95無鉛|98無鉛|超級柴油')):
+                price_table = table
+                break
+        
         if not price_table:
             logger.error("找不到油價表格")
             return None
+            
+        # 解析表格內容
         rows = price_table.find_all('tr')
         if len(rows) < 2:
             logger.error("油價表格格式不正確")
             return None
-        header_row = rows[0]
-        data_row = rows[1]
-        headers = [th.text.strip() for th in header_row.find_all('th')]
-        data = [td.text.strip() for td in data_row.find_all('td')]
+            
+        # 取得表頭和資料
+        headers = []
+        data = []
+        
+        # 處理表頭
+        header_cells = rows[0].find_all(['th', 'td'])
+        for cell in header_cells:
+            text = cell.get_text(strip=True)
+            if text:  # 只加入非空的表頭
+                headers.append(text)
+                
+        # 處理資料行
+        data_cells = rows[1].find_all(['th', 'td'])
+        for cell in data_cells:
+            text = cell.get_text(strip=True)
+            if text:  # 只加入非空的資料
+                data.append(text)
+                
         if len(headers) != len(data):
-            logger.error("油價表格資料不完整")
+            logger.error(f"表頭數量 ({len(headers)}) 與資料數量 ({len(data)}) 不符")
             return None
+            
         price_info = dict(zip(headers, data))
         logger.info(f"成功抓取當前油價: {price_info}")
         return price_info
@@ -90,30 +120,49 @@ def get_oil_price_trend():
         response = requests.get(url)
         response.raise_for_status()
         html = response.text
-        # 使用正則表達式從 JavaScript 變數中提取油價資料
+        
+        # 使用更寬鬆的正則表達式來匹配 JavaScript 變數
         match = re.search(r'var\s+priceData\s*=\s*(\[.*?\]);', html, re.DOTALL)
         if not match:
-            logger.error("找不到油價資料")
-            return None
+            # 如果找不到 priceData，嘗試尋找其他可能的變數名稱
+            match = re.search(r'var\s+[a-zA-Z0-9_]+\s*=\s*(\[.*?\]);', html, re.DOTALL)
+            if not match:
+                logger.error("找不到油價資料")
+                return None
+                
         price_data_str = match.group(1)
+        logger.info(f"找到的資料字串: {price_data_str[:100]}...")  # 只記錄前100個字元
+        
         try:
+            # 清理資料字串
+            price_data_str = price_data_str.replace("'", '"')  # 將單引號替換為雙引號
             price_data = json.loads(price_data_str)
         except json.JSONDecodeError as e:
             logger.error(f"解析油價資料時發生錯誤: {e}")
             return None
+            
         if not price_data:
             logger.error("油價資料為空")
             return None
+            
+        # 確保資料格式正確
+        if not all(isinstance(item, list) and len(item) >= 5 for item in price_data):
+            logger.error("油價資料格式不正確")
+            return None
+            
         dates = [item[0] for item in price_data]
         prices_92 = [float(item[1]) for item in price_data]
         prices_95 = [float(item[2]) for item in price_data]
         prices_98 = [float(item[3]) for item in price_data]
         prices_diesel = [float(item[4]) for item in price_data]
+        
+        # 繪製圖表
         plt.figure(figsize=(10, 6))
         plt.plot(dates, prices_92, marker='o', label='92無鉛汽油')
         plt.plot(dates, prices_95, marker='o', label='95無鉛汽油')
         plt.plot(dates, prices_98, marker='o', label='98無鉛汽油')
         plt.plot(dates, prices_diesel, marker='o', label='超級柴油')
+        
         # 在每個點上標註數值
         for x, y in zip(dates, prices_92):
             plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
@@ -123,6 +172,7 @@ def get_oil_price_trend():
             plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
         for x, y in zip(dates, prices_diesel):
             plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
+            
         plt.xlabel('日期')
         plt.ylabel('價格 (新台幣元/公升)')
         plt.title('中油油價趨勢')
@@ -130,10 +180,12 @@ def get_oil_price_trend():
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
+        
         buffer = BytesIO()
         plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
         buffer.seek(0)
         plt.close()
+        
         logger.info("油價趨勢圖表已生成到記憶體")
         return buffer
     except Exception as e:
