@@ -14,6 +14,7 @@ import numpy as np
 from io import BytesIO
 from imagekitio import ImageKit
 import matplotlib
+matplotlib.use('Agg')  # 使用 Agg 後端
 matplotlib.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'DejaVu Sans', 'sans-serif']
 matplotlib.rcParams['axes.unicode_minus'] = False
 matplotlib.rcParams['font.family'] = 'sans-serif'
@@ -118,21 +119,18 @@ def get_oil_price_trend():
         response.raise_for_status()
         html = response.text
         
-        # 使用更寬鬆的正則表達式來匹配 JavaScript 變數
         match = re.search(r'var\s+priceData\s*=\s*(\[.*?\]);', html, re.DOTALL)
         if not match:
-            # 如果找不到 priceData，嘗試尋找其他可能的變數名稱
             match = re.search(r'var\s+[a-zA-Z0-9_]+\s*=\s*(\[.*?\]);', html, re.DOTALL)
             if not match:
                 logger.error("找不到油價資料")
                 return None
                 
         price_data_str = match.group(1)
-        logger.info(f"找到的資料字串: {price_data_str[:100]}...")  # 只記錄前100個字元
+        logger.info(f"找到的資料字串: {price_data_str[:100]}...")
         
         try:
-            # 清理資料字串
-            price_data_str = price_data_str.replace("'", '"')  # 將單引號替換為雙引號
+            price_data_str = price_data_str.replace("'", '"')
             price_data = json.loads(price_data_str)
         except json.JSONDecodeError as e:
             logger.error(f"解析油價資料時發生錯誤: {e}")
@@ -142,7 +140,6 @@ def get_oil_price_trend():
             logger.error("油價資料為空")
             return None
             
-        # 處理新的資料格式
         dates = []
         prices_92 = []
         prices_95 = []
@@ -152,15 +149,14 @@ def get_oil_price_trend():
         for item in price_data:
             if isinstance(item, dict) and 'data' in item:
                 if '92' in item.get('label', ''):
-                    prices_92 = item['data']
+                    prices_92 = [float(x) for x in item['data']]
                 elif '95' in item.get('label', ''):
-                    prices_95 = item['data']
+                    prices_95 = [float(x) for x in item['data']]
                 elif '98' in item.get('label', ''):
-                    prices_98 = item['data']
+                    prices_98 = [float(x) for x in item['data']]
                 elif '柴油' in item.get('label', ''):
-                    prices_diesel = item['data']
+                    prices_diesel = [float(x) for x in item['data']]
         
-        # 從第一個資料集獲取日期
         if prices_92:
             dates = [f"{i+1}" for i in range(len(prices_92))]
         
@@ -168,22 +164,20 @@ def get_oil_price_trend():
             logger.error("無法取得完整的油價資料")
             return None
         
-        # 繪製圖表
         plt.figure(figsize=(10, 6))
         plt.plot(dates, prices_92, marker='o', label='92無鉛汽油')
         plt.plot(dates, prices_95, marker='o', label='95無鉛汽油')
         plt.plot(dates, prices_98, marker='o', label='98無鉛汽油')
         plt.plot(dates, prices_diesel, marker='o', label='超級柴油')
         
-        # 在每個點上標註數值
         for x, y in zip(dates, prices_92):
-            plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
+            plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
         for x, y in zip(dates, prices_95):
-            plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
+            plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
         for x, y in zip(dates, prices_98):
-            plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
+            plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
         for x, y in zip(dates, prices_diesel):
-            plt.text(x, y, f"{y}", ha='center', va='bottom', fontsize=10)
+            plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
             
         plt.xlabel('日期')
         plt.ylabel('價格 (新台幣元/公升)')
@@ -239,9 +233,8 @@ def handle_message(event):
                 buffer = get_oil_price_trend()
                 if buffer:
                     logger.info("成功取得油價趨勢圖")
-                    # 上傳圖片到 ImageKit
                     result = imagekit.upload_file(
-                        file=buffer.getvalue(),  # 使用 getvalue() 獲取二進制數據
+                        file=buffer.getvalue(),
                         file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
                         options={
                             "response_fields": ["url"],
@@ -251,7 +244,6 @@ def handle_message(event):
                     
                     if isinstance(result, dict) and 'url' in result:
                         logger.info(f"成功上傳圖片到 ImageKit: {result['url']}")
-                        # 回傳圖片訊息
                         line_bot_api.reply_message(
                             event.reply_token,
                             ImageSendMessage(
