@@ -141,16 +141,31 @@ def get_oil_price_trend():
             logger.error("油價資料為空")
             return None
             
-        # 確保資料格式正確
-        if not all(isinstance(item, list) and len(item) >= 5 for item in price_data):
-            logger.error("油價資料格式不正確")
+        # 處理新的資料格式
+        dates = []
+        prices_92 = []
+        prices_95 = []
+        prices_98 = []
+        prices_diesel = []
+        
+        for item in price_data:
+            if isinstance(item, dict) and 'data' in item:
+                if '92' in item.get('label', ''):
+                    prices_92 = item['data']
+                elif '95' in item.get('label', ''):
+                    prices_95 = item['data']
+                elif '98' in item.get('label', ''):
+                    prices_98 = item['data']
+                elif '柴油' in item.get('label', ''):
+                    prices_diesel = item['data']
+        
+        # 從第一個資料集獲取日期
+        if prices_92:
+            dates = [f"{i+1}" for i in range(len(prices_92))]
+        
+        if not all([dates, prices_92, prices_95, prices_98, prices_diesel]):
+            logger.error("無法取得完整的油價資料")
             return None
-            
-        dates = [item[0] for item in price_data]
-        prices_92 = [float(item[1]) for item in price_data]
-        prices_95 = [float(item[2]) for item in price_data]
-        prices_98 = [float(item[3]) for item in price_data]
-        prices_diesel = [float(item[4]) for item in price_data]
         
         # 繪製圖表
         plt.figure(figsize=(10, 6))
