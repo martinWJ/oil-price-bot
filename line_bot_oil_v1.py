@@ -58,57 +58,45 @@ def get_current_oil_price():
     try:
         url = 'https://www.cpc.com.tw/'
         logger.info(f"開始抓取當前油價，URL: {url}")
-        response = requests.get(url)
+        
+        # 設定 headers 模擬瀏覽器
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 尋找所有表格
-        tables = soup.find_all('table')
-        logger.info(f"找到 {len(tables)} 個表格")
-        
-        # 尋找包含油價資訊的表格
-        price_table = None
-        for table in tables:
-            # 檢查表格是否包含油價相關文字
-            if table.find(string=re.compile(r'92無鉛|95無鉛|98無鉛|超級柴油')):
-                price_table = table
+        # 尋找包含油價資訊的文字
+        price_text = None
+        for text in soup.find_all(string=re.compile(r'92無鉛汽油每公升|95無鉛汽油每公升|98無鉛汽油每公升|超級柴油每公升')):
+            if '每公升' in text:
+                price_text = text
                 break
         
-        if not price_table:
-            logger.error("找不到油價表格")
+        if not price_text:
+            logger.error("找不到油價資訊")
             return None
             
-        # 解析表格內容
-        rows = price_table.find_all('tr')
-        if len(rows) < 2:
-            logger.error("油價表格格式不正確")
-            return None
-            
-        # 取得表頭和資料
-        headers = []
-        data = []
+        # 使用正則表達式提取油價資訊
+        price_pattern = r'(92無鉛汽油|95無鉛汽油|98無鉛汽油|超級柴油)每公升(\d+\.\d+)元'
+        matches = re.findall(price_pattern, price_text)
         
-        # 處理表頭
-        header_cells = rows[0].find_all(['th', 'td'])
-        for cell in header_cells:
-            text = cell.get_text(strip=True)
-            if text:  # 只加入非空的表頭
-                headers.append(text)
-                
-        # 處理資料行
-        data_cells = rows[1].find_all(['th', 'td'])
-        for cell in data_cells:
-            text = cell.get_text(strip=True)
-            if text:  # 只加入非空的資料
-                data.append(text)
-                
-        if len(headers) != len(data):
-            logger.error(f"表頭數量 ({len(headers)}) 與資料數量 ({len(data)}) 不符")
+        if not matches:
+            logger.error("無法解析油價資訊")
             return None
             
-        price_info = dict(zip(headers, data))
+        # 將油價資訊轉換為字典
+        price_info = {name: f"{price}元" for name, price in matches}
         logger.info(f"成功抓取當前油價: {price_info}")
-        return price_info
+        
+        # 格式化回覆訊息
+        message = "中油當前油價：\n"
+        for name, price in price_info.items():
+            message += f"{name}：{price}\n"
+            
+        return message
     except Exception as e:
         logger.error(f"抓取當前油價時發生錯誤: {str(e)}")
         return None
@@ -270,12 +258,9 @@ def handle_message(event):
             logger.info("收到油價指令")
             price_info = get_current_oil_price()
             if price_info:
-                message = "中油當前油價：\n"
-                for key, value in price_info.items():
-                    message += f"{key}: {value}\n"
                 line_bot_api.reply_message(
                     event.reply_token,
-                    TextSendMessage(text=message)
+                    TextSendMessage(text=price_info)
                 )
             else:
                 line_bot_api.reply_message(
