@@ -14,8 +14,8 @@ import numpy as np
 from io import BytesIO
 from imagekitio import ImageKit
 import matplotlib
-matplotlib.rc('font', family=['Arial Unicode MS', 'DejaVu Sans', 'sans-serif'])
-matplotlib.rc('axes', unicode_minus=False)
+matplotlib.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'DejaVu Sans', 'sans-serif']
+matplotlib.rcParams['axes.unicode_minus'] = False
 # import undetected_chromedriver as uc
 # from selenium.webdriver.support.ui import WebDriverWait
 # from selenium.webdriver.support import expected_conditions as EC
@@ -248,7 +248,7 @@ def handle_message(event):
                         }
                     )
                     
-                    if result and isinstance(result, dict) and 'url' in result:
+                    if isinstance(result, dict) and 'url' in result:
                         logger.info(f"成功上傳圖片到 ImageKit: {result['url']}")
                         # 回傳圖片訊息
                         line_bot_api.reply_message(
@@ -260,7 +260,7 @@ def handle_message(event):
                         )
                         logger.info("已回傳油價趨勢圖")
                     else:
-                        logger.error("圖片上傳失敗，ImageKit 回應: " + str(result))
+                        logger.error(f"圖片上傳失敗，ImageKit 回應: {result}")
                         line_bot_api.reply_message(
                             event.reply_token,
                             TextSendMessage(text="抱歉，圖片上傳失敗，請稍後再試")
