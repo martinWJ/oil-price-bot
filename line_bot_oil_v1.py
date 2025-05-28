@@ -14,7 +14,7 @@ import numpy as np
 from io import BytesIO
 from imagekitio import ImageKit
 import matplotlib
-matplotlib.rc('font', family='Microsoft JhengHei')
+matplotlib.rc('font', family=['Arial Unicode MS', 'DejaVu Sans', 'sans-serif'])
 matplotlib.rc('axes', unicode_minus=False)
 # import undetected_chromedriver as uc
 # from selenium.webdriver.support.ui import WebDriverWait
@@ -167,10 +167,6 @@ def get_oil_price_trend():
             logger.error("無法取得完整的油價資料")
             return None
         
-        # 設定中文字體
-        plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'DejaVu Sans', 'sans-serif']
-        plt.rcParams['axes.unicode_minus'] = False
-        
         # 繪製圖表
         plt.figure(figsize=(10, 6))
         plt.plot(dates, prices_92, marker='o', label='92無鉛汽油')
@@ -252,7 +248,7 @@ def handle_message(event):
                         }
                     )
                     
-                    if result and 'url' in result:
+                    if result and isinstance(result, dict) and 'url' in result:
                         logger.info(f"成功上傳圖片到 ImageKit: {result['url']}")
                         # 回傳圖片訊息
                         line_bot_api.reply_message(
