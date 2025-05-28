@@ -15,9 +15,9 @@ from io import BytesIO
 from imagekitio import ImageKit
 import matplotlib
 matplotlib.use('Agg')  # 使用 Agg 後端
-matplotlib.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'DejaVu Sans', 'sans-serif']
-matplotlib.rcParams['axes.unicode_minus'] = False
 matplotlib.rcParams['font.family'] = 'sans-serif'
+matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
+matplotlib.rcParams['axes.unicode_minus'] = False
 # import undetected_chromedriver as uc
 # from selenium.webdriver.support.ui import WebDriverWait
 # from selenium.webdriver.support import expected_conditions as EC
@@ -158,7 +158,7 @@ def get_oil_price_trend():
                     prices_diesel = [float(x) for x in item['data']]
         
         if prices_92:
-            dates = [f"{i+1}" for i in range(len(prices_92))]
+            dates = list(range(1, len(prices_92) + 1))
         
         if not all([dates, prices_92, prices_95, prices_98, prices_diesel]):
             logger.error("無法取得完整的油價資料")
