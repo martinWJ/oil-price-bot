@@ -16,9 +16,16 @@ from imagekitio import ImageKit
 import matplotlib
 matplotlib.use('Agg')  # 使用 Agg 後端
 
+# 安裝中文字體
+try:
+    import subprocess
+    subprocess.run(['apt-get', 'update'], check=True)
+    subprocess.run(['apt-get', 'install', '-y', 'fonts-wqy-microhei'], check=True)
+except Exception as e:
+    logger.error(f"安裝字體時發生錯誤: {str(e)}")
+
 # 設定字體
-plt.rcParams['font.family'] = ['sans-serif']
-plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Helvetica', 'sans-serif']
+plt.rcParams['font.family'] = ['WenQuanYi Micro Hei', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False
 
 # 設定 logging
@@ -231,8 +238,12 @@ def handle_message(event):
                 if buffer:
                     logger.info("成功取得油價趨勢圖")
                     try:
-                        result = imagekit.upload_file(
-                            file=buffer.getvalue(),
+                        # 將 buffer 轉換為 bytes
+                        image_bytes = buffer.getvalue()
+                        
+                        # 上傳到 ImageKit
+                        upload_result = imagekit.upload_file(
+                            file=image_bytes,
                             file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
                             options={
                                 "response_fields": ["url"],
@@ -240,20 +251,24 @@ def handle_message(event):
                             }
                         )
                         
-                        logger.info(f"ImageKit 上傳結果: {result}")
+                        logger.info(f"ImageKit 上傳結果: {upload_result}")
                         
-                        if isinstance(result, dict) and 'url' in result:
-                            logger.info(f"成功上傳圖片到 ImageKit: {result['url']}")
+                        # 檢查上傳結果
+                        if isinstance(upload_result, dict) and 'url' in upload_result:
+                            image_url = upload_result['url']
+                            logger.info(f"成功上傳圖片到 ImageKit: {image_url}")
+                            
+                            # 回傳圖片
                             line_bot_api.reply_message(
                                 event.reply_token,
                                 ImageSendMessage(
-                                    original_content_url=result['url'],
-                                    preview_image_url=result['url']
+                                    original_content_url=image_url,
+                                    preview_image_url=image_url
                                 )
                             )
                             logger.info("已回傳油價趨勢圖")
                         else:
-                            logger.error(f"ImageKit 回應格式不正確或缺少 url: {result}")
+                            logger.error(f"ImageKit 回應格式不正確或缺少 url: {upload_result}")
                             line_bot_api.reply_message(
                                 event.reply_token,
                                 TextSendMessage(text="抱歉，圖片上傳失敗，請稍後再試")
