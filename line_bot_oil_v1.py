@@ -164,53 +164,68 @@ def handle_message(event):
     text = event.message.text
     logger.info(f"收到訊息: {text}")
     
-    if text == "趨勢":
-        try:
-            buffer = get_oil_price_trend()
-            if buffer:
-                # 上傳圖片到 ImageKit
-                result = imagekit.upload_file(
-                    file=buffer,
-                    file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
-                    options={
-                        "response_fields": ["url"],
-                        "tags": ["oil_price", "trend"]
-                    }
-                )
-                
-                if result and 'url' in result:
-                    # 回傳圖片訊息
-                    line_bot_api.reply_message(
-                        event.reply_token,
-                        ImageSendMessage(
-                            original_content_url=result['url'],
-                            preview_image_url=result['url']
-                        )
+    try:
+        if text in ["趨勢", "油價趨勢"]:
+            try:
+                buffer = get_oil_price_trend()
+                if buffer:
+                    # 上傳圖片到 ImageKit
+                    result = imagekit.upload_file(
+                        file=buffer,
+                        file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
+                        options={
+                            "response_fields": ["url"],
+                            "tags": ["oil_price", "trend"]
+                        }
                     )
-                    logger.info("已回傳油價趨勢圖")
+                    
+                    if result and 'url' in result:
+                        # 回傳圖片訊息
+                        line_bot_api.reply_message(
+                            event.reply_token,
+                            ImageSendMessage(
+                                original_content_url=result['url'],
+                                preview_image_url=result['url']
+                            )
+                        )
+                        logger.info("已回傳油價趨勢圖")
+                    else:
+                        line_bot_api.reply_message(
+                            event.reply_token,
+                            TextSendMessage(text="抱歉，圖片上傳失敗，請稍後再試")
+                        )
+                        logger.error("圖片上傳失敗")
                 else:
                     line_bot_api.reply_message(
                         event.reply_token,
-                        TextSendMessage(text="無法上傳圖片，請稍後再試")
+                        TextSendMessage(text="抱歉，目前無法取得油價趨勢資料，請稍後再試")
                     )
-                    logger.error("圖片上傳失敗")
-            else:
+                    logger.error("無法取得油價趨勢資料")
+            except Exception as e:
                 line_bot_api.reply_message(
                     event.reply_token,
-                    TextSendMessage(text="無法取得油價趨勢資料，請稍後再試")
+                    TextSendMessage(text="抱歉，系統暫時無法處理您的請求，請稍後再試")
                 )
-                logger.error("無法取得油價趨勢資料")
-        except Exception as e:
+                logger.error(f"處理趨勢請求時發生錯誤: {str(e)}")
+        elif text == "油價":
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text=f"發生錯誤：{str(e)}")
+                TextSendMessage(text="請輸入「趨勢」或「油價趨勢」查看油價趨勢圖")
             )
-            logger.error(f"處理趨勢請求時發生錯誤: {str(e)}")
-    else:
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text="請輸入「趨勢」查看油價趨勢圖")
-        )
+        else:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="您好！我是油價查詢機器人\n\n請輸入以下指令：\n• 趨勢：查看油價趨勢圖\n• 油價：查看使用說明")
+            )
+    except Exception as e:
+        logger.error(f"處理訊息時發生錯誤: {str(e)}")
+        try:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="抱歉，系統發生錯誤，請稍後再試")
+            )
+        except:
+            pass
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000))) 
