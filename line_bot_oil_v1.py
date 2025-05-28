@@ -15,9 +15,9 @@ from io import BytesIO
 from imagekitio import ImageKit
 import matplotlib
 matplotlib.use('Agg')  # 使用 Agg 後端
-matplotlib.rcParams['font.family'] = 'sans-serif'
-matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
-matplotlib.rcParams['axes.unicode_minus'] = False
+plt.rcParams['font.family'] = 'sans-serif'
+plt.rcParams['font.sans-serif'] = ['DejaVu Sans']
+plt.rcParams['axes.unicode_minus'] = False
 # import undetected_chromedriver as uc
 # from selenium.webdriver.support.ui import WebDriverWait
 # from selenium.webdriver.support import expected_conditions as EC
@@ -233,27 +233,43 @@ def handle_message(event):
                 buffer = get_oil_price_trend()
                 if buffer:
                     logger.info("成功取得油價趨勢圖")
-                    result = imagekit.upload_file(
-                        file=buffer.getvalue(),
-                        file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
-                        options={
-                            "response_fields": ["url"],
-                            "tags": ["oil_price", "trend"]
-                        }
-                    )
-                    
-                    if isinstance(result, dict) and 'url' in result:
-                        logger.info(f"成功上傳圖片到 ImageKit: {result['url']}")
-                        line_bot_api.reply_message(
-                            event.reply_token,
-                            ImageSendMessage(
-                                original_content_url=result['url'],
-                                preview_image_url=result['url']
-                            )
+                    try:
+                        result = imagekit.upload_file(
+                            file=buffer.getvalue(),
+                            file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
+                            options={
+                                "response_fields": ["url"],
+                                "tags": ["oil_price", "trend"]
+                            }
                         )
-                        logger.info("已回傳油價趨勢圖")
-                    else:
-                        logger.error(f"圖片上傳失敗，ImageKit 回應: {result}")
+                        
+                        logger.info(f"ImageKit 上傳結果: {result}")
+                        
+                        if isinstance(result, dict):
+                            if 'url' in result:
+                                logger.info(f"成功上傳圖片到 ImageKit: {result['url']}")
+                                line_bot_api.reply_message(
+                                    event.reply_token,
+                                    ImageSendMessage(
+                                        original_content_url=result['url'],
+                                        preview_image_url=result['url']
+                                    )
+                                )
+                                logger.info("已回傳油價趨勢圖")
+                            else:
+                                logger.error(f"ImageKit 回應中沒有 url 欄位: {result}")
+                                line_bot_api.reply_message(
+                                    event.reply_token,
+                                    TextSendMessage(text="抱歉，圖片上傳失敗，請稍後再試")
+                                )
+                        else:
+                            logger.error(f"ImageKit 回應格式不正確: {type(result)}")
+                            line_bot_api.reply_message(
+                                event.reply_token,
+                                TextSendMessage(text="抱歉，圖片上傳失敗，請稍後再試")
+                            )
+                    except Exception as upload_error:
+                        logger.error(f"上傳圖片時發生錯誤: {str(upload_error)}")
                         line_bot_api.reply_message(
                             event.reply_token,
                             TextSendMessage(text="抱歉，圖片上傳失敗，請稍後再試")
