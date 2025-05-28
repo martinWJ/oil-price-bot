@@ -15,14 +15,11 @@ from io import BytesIO
 from imagekitio import ImageKit
 import matplotlib
 matplotlib.use('Agg')  # 使用 Agg 後端
-plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.sans-serif'] = ['DejaVu Sans']
+
+# 設定字體
+plt.rcParams['font.family'] = ['sans-serif']
+plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Helvetica', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False
-# import undetected_chromedriver as uc
-# from selenium.webdriver.support.ui import WebDriverWait
-# from selenium.webdriver.support import expected_conditions as EC
-# from selenium.webdriver.common.by import By
-# import time
 
 # 設定 logging
 logging.basicConfig(level=logging.INFO)
@@ -245,25 +242,18 @@ def handle_message(event):
                         
                         logger.info(f"ImageKit 上傳結果: {result}")
                         
-                        if isinstance(result, dict):
-                            if 'url' in result:
-                                logger.info(f"成功上傳圖片到 ImageKit: {result['url']}")
-                                line_bot_api.reply_message(
-                                    event.reply_token,
-                                    ImageSendMessage(
-                                        original_content_url=result['url'],
-                                        preview_image_url=result['url']
-                                    )
+                        if isinstance(result, dict) and 'url' in result:
+                            logger.info(f"成功上傳圖片到 ImageKit: {result['url']}")
+                            line_bot_api.reply_message(
+                                event.reply_token,
+                                ImageSendMessage(
+                                    original_content_url=result['url'],
+                                    preview_image_url=result['url']
                                 )
-                                logger.info("已回傳油價趨勢圖")
-                            else:
-                                logger.error(f"ImageKit 回應中沒有 url 欄位: {result}")
-                                line_bot_api.reply_message(
-                                    event.reply_token,
-                                    TextSendMessage(text="抱歉，圖片上傳失敗，請稍後再試")
-                                )
+                            )
+                            logger.info("已回傳油價趨勢圖")
                         else:
-                            logger.error(f"ImageKit 回應格式不正確: {type(result)}")
+                            logger.error(f"ImageKit 回應格式不正確或缺少 url: {result}")
                             line_bot_api.reply_message(
                                 event.reply_token,
                                 TextSendMessage(text="抱歉，圖片上傳失敗，請稍後再試")
