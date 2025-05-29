@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # 設定字體
 plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'DejaVu Sans', 'sans-serif']
+plt.rcParams['font.sans-serif'] = ['Noto Sans CJK TC', 'WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False
 
 # 初始化 Flask 應用程式
@@ -273,10 +273,26 @@ def handle_message(event):
                             
                         except Exception as e:
                             logger.error(f"上傳圖片時發生錯誤: {str(e)}")
-                            line_bot_api.reply_message(
-                                event.reply_token,
-                                TextSendMessage(text="抱歉，圖片上傳失敗，請稍後再試")
-                            )
+                            # 嘗試直接使用 buffer 回傳圖片
+                            try:
+                                line_bot_api.reply_message(
+                                    event.reply_token,
+                                    TextSendMessage(text="圖片上傳失敗，正在嘗試直接回傳...")
+                                )
+                                buffer.seek(0)
+                                line_bot_api.reply_message(
+                                    event.reply_token,
+                                    ImageSendMessage(
+                                        original_content_url=buffer.getvalue(),
+                                        preview_image_url=buffer.getvalue()
+                                    )
+                                )
+                            except Exception as direct_error:
+                                logger.error(f"直接回傳圖片時發生錯誤: {str(direct_error)}")
+                                line_bot_api.reply_message(
+                                    event.reply_token,
+                                    TextSendMessage(text="抱歉，圖片回傳失敗，請稍後再試")
+                                )
                     except Exception as e:
                         logger.error(f"上傳圖片時發生錯誤: {str(e)}")
                         line_bot_api.reply_message(
