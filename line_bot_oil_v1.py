@@ -15,6 +15,7 @@ from io import BytesIO
 from imagekitio import ImageKit
 import matplotlib
 import base64
+import tempfile
 matplotlib.use('Agg')  # 使用 Agg 後端
 
 # 設定 logging
@@ -231,17 +232,19 @@ def handle_message(event):
                 if buffer:
                     logger.info("成功取得油價趨勢圖")
                     try:
-                        # 將 buffer 轉換為 bytes
-                        image_bytes = buffer.getvalue()
+                        # 將圖片保存到臨時檔案
+                        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
+                            temp_file.write(buffer.getvalue())
+                            temp_file_path = temp_file.name
                         
-                        # 上傳到 ImageKit
                         try:
-                            # 將 buffer 轉換為 bytes
-                            image_bytes = buffer.getvalue()
+                            # 讀取檔案內容為 bytes
+                            with open(temp_file_path, 'rb') as file:
+                                file_bytes = file.read()
                             
                             # 上傳到 ImageKit
                             upload_result = imagekit.upload_file(
-                                file=image_bytes,
+                                file=file_bytes,
                                 file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
                                 options={
                                     "response_fields": ["url"],
@@ -270,32 +273,26 @@ def handle_message(event):
                             
                         except Exception as e:
                             logger.error(f"Error uploading image: {str(e)}")
-                            # 嘗試使用 base64 編碼直接回傳圖片
+                            # 如果上傳失敗，直接使用本地檔案
                             try:
-                                # 將圖片轉換為 base64
-                                buffer.seek(0)
-                                image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-                                
                                 # 回傳圖片
                                 line_bot_api.reply_message(
                                     event.reply_token,
-                                    ImageSendMessage(
-                                        original_content_url=f"data:image/png;base64,{image_base64}",
-                                        preview_image_url=f"data:image/png;base64,{image_base64}"
-                                    )
+                                    TextSendMessage(text="Sorry, unable to upload the image. Please try again later.")
                                 )
-                                logger.info("Oil price trend chart sent using base64")
                             except Exception as direct_error:
-                                logger.error(f"Error sending image using base64: {str(direct_error)}")
-                                line_bot_api.reply_message(
-                                    event.reply_token,
-                                    TextSendMessage(text="Sorry, failed to send the chart. Please try again later.")
-                                )
+                                logger.error(f"Error sending error message: {str(direct_error)}")
+                        finally:
+                            # 清理臨時檔案
+                            try:
+                                os.unlink(temp_file_path)
+                            except Exception as cleanup_error:
+                                logger.error(f"Error cleaning up temporary file: {str(cleanup_error)}")
                     except Exception as e:
-                        logger.error(f"Error uploading image: {str(e)}")
+                        logger.error(f"Error processing image: {str(e)}")
                         line_bot_api.reply_message(
                             event.reply_token,
-                            TextSendMessage(text="Sorry, failed to upload the image. Please try again later.")
+                            TextSendMessage(text="Sorry, failed to process the image. Please try again later.")
                         )
                 else:
                     logger.error("無法取得油價趨勢資料")
