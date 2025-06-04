@@ -14,6 +14,7 @@ import numpy as np
 from io import BytesIO
 from imagekitio import ImageKit
 import matplotlib
+import base64
 matplotlib.use('Agg')  # 使用 Agg 後端
 
 # 設定 logging
@@ -102,7 +103,7 @@ def get_current_oil_price():
             name = name.replace('汽油', '')
             message += f"{name}: {price} 元/公升\n"
             
-        return message
+            return message
     except Exception as e:
         logger.error(f"抓取當前油價時發生錯誤: {str(e)}")
         return None
@@ -130,11 +131,11 @@ def get_oil_price_trend():
             price_data = json.loads(price_data_str)
         except json.JSONDecodeError as e:
             logger.error(f"解析油價資料時發生錯誤: {e}")
-            return None
+                return None
             
         if not price_data:
             logger.error("油價資料為空")
-            return None
+                return None
             
         dates = []
         prices_92 = []
@@ -158,38 +159,38 @@ def get_oil_price_trend():
         
         if not all([dates, prices_92, prices_95, prices_98, prices_diesel]):
             logger.error("無法取得完整的油價資料")
-            return None
+                return None
         
-        plt.figure(figsize=(10, 6))
+            plt.figure(figsize=(10, 6))
         plt.plot(dates, prices_92, marker='o', label='92 Unleaded')
         plt.plot(dates, prices_95, marker='o', label='95 Unleaded')
         plt.plot(dates, prices_98, marker='o', label='98 Unleaded')
         plt.plot(dates, prices_diesel, marker='o', label='Super Diesel')
         
-        for x, y in zip(dates, prices_92):
+            for x, y in zip(dates, prices_92):
             plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
-        for x, y in zip(dates, prices_95):
+            for x, y in zip(dates, prices_95):
             plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
-        for x, y in zip(dates, prices_98):
+            for x, y in zip(dates, prices_98):
             plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
-        for x, y in zip(dates, prices_diesel):
+            for x, y in zip(dates, prices_diesel):
             plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
             
         plt.xlabel('Date')
         plt.ylabel('Price (NTD/L)')
         plt.title('CPC Oil Price Trend')
-        plt.xticks(rotation=45)
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
+            plt.xticks(rotation=45)
+            plt.legend()
+            plt.grid(True)
+            plt.tight_layout()
         
-        buffer = BytesIO()
-        plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
-        buffer.seek(0)
-        plt.close()
+            buffer = BytesIO()
+            plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
+            buffer.seek(0)
+            plt.close()
         
         logger.info("Oil price trend chart generated in memory")
-        return buffer
+            return buffer
     except Exception as e:
         logger.error(f"生成油價趨勢圖表時發生錯誤: {str(e)}")
         return None
@@ -203,7 +204,7 @@ def callback():
     # 取得請求內容
     body = request.get_data(as_text=True)
     logger.info("Request body: " + body)
-
+    
     try:
         handler.handle(body, signature)
         logger.info("成功處理 webhook 請求")
@@ -269,22 +270,23 @@ def handle_message(event):
                             
                         except Exception as e:
                             logger.error(f"Error uploading image: {str(e)}")
-                            # 嘗試使用 ImageKit 的 URL 直接回傳
+                            # 嘗試使用 base64 編碼直接回傳圖片
                             try:
-                                # 使用 ImageKit 的 URL 端點
-                                image_url = f"{IMAGEKIT_URL_ENDPOINT}/oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png"
+                                # 將圖片轉換為 base64
+                                buffer.seek(0)
+                                image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
                                 
                                 # 回傳圖片
                                 line_bot_api.reply_message(
                                     event.reply_token,
                                     ImageSendMessage(
-                                        original_content_url=image_url,
-                                        preview_image_url=image_url
+                                        original_content_url=f"data:image/png;base64,{image_base64}",
+                                        preview_image_url=f"data:image/png;base64,{image_base64}"
                                     )
                                 )
-                                logger.info("Oil price trend chart sent using ImageKit URL")
+                                logger.info("Oil price trend chart sent using base64")
                             except Exception as direct_error:
-                                logger.error(f"Error sending image using ImageKit URL: {str(direct_error)}")
+                                logger.error(f"Error sending image using base64: {str(direct_error)}")
                                 line_bot_api.reply_message(
                                     event.reply_token,
                                     TextSendMessage(text="Sorry, failed to send the chart. Please try again later.")
@@ -311,13 +313,13 @@ def handle_message(event):
             logger.info("收到油價指令")
             price_info = get_current_oil_price()
             if price_info:
-                line_bot_api.reply_message(
-                    event.reply_token,
+            line_bot_api.reply_message(
+                event.reply_token,
                     TextSendMessage(text=price_info)
-                )
-            else:
-                line_bot_api.reply_message(
-                    event.reply_token,
+            )
+    else:
+        line_bot_api.reply_message(
+            event.reply_token,
                     TextSendMessage(text="抱歉，目前無法取得當前油價，請稍後再試")
                 )
         else:
