@@ -1,12 +1,11 @@
 flask==2.0.1
 line-bot-sdk==3.17.1
-requests==2.26.0
+requests>=2.32.3
+urllib3>=2.0.5
 beautifulsoup4==4.9.3
 matplotlib==3.4.3
 numpy==1.21.2
 imagekitio==4.1.0
 undetected-chromedriver==3.5.3
 selenium==4.10.0
-gunicorn==20.1.0
-werkzeug==2.0.1
-urllib3==1.26.15 
+gunicorn==20.1.0 
