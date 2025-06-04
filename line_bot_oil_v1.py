@@ -161,10 +161,10 @@ def get_oil_price_trend():
             return None
         
         plt.figure(figsize=(10, 6))
-        plt.plot(dates, prices_92, marker='o', label='92無鉛汽油')
-        plt.plot(dates, prices_95, marker='o', label='95無鉛汽油')
-        plt.plot(dates, prices_98, marker='o', label='98無鉛汽油')
-        plt.plot(dates, prices_diesel, marker='o', label='超級柴油')
+        plt.plot(dates, prices_92, marker='o', label='92 Unleaded')
+        plt.plot(dates, prices_95, marker='o', label='95 Unleaded')
+        plt.plot(dates, prices_98, marker='o', label='98 Unleaded')
+        plt.plot(dates, prices_diesel, marker='o', label='Super Diesel')
         
         for x, y in zip(dates, prices_92):
             plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
@@ -175,9 +175,9 @@ def get_oil_price_trend():
         for x, y in zip(dates, prices_diesel):
             plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
             
-        plt.xlabel('日期')
-        plt.ylabel('價格 (新台幣元/公升)')
-        plt.title('中油油價趨勢')
+        plt.xlabel('Date')
+        plt.ylabel('Price (NTD/L)')
+        plt.title('CPC Oil Price Trend')
         plt.xticks(rotation=45)
         plt.legend()
         plt.grid(True)
@@ -188,7 +188,7 @@ def get_oil_price_trend():
         buffer.seek(0)
         plt.close()
         
-        logger.info("油價趨勢圖表已生成到記憶體")
+        logger.info("Oil price trend chart generated in memory")
         return buffer
     except Exception as e:
         logger.error(f"生成油價趨勢圖表時發生錯誤: {str(e)}")
@@ -248,12 +248,12 @@ def handle_message(event):
                                 }
                             )
                             
-                            logger.info(f"ImageKit 上傳結果: {upload_result}")
+                            logger.info(f"ImageKit upload result: {upload_result}")
                             
                             # 檢查上傳結果
                             if isinstance(upload_result, dict) and 'url' in upload_result:
                                 image_url = upload_result['url']
-                                logger.info(f"成功上傳圖片到 ImageKit: {image_url}")
+                                logger.info(f"Successfully uploaded image to ImageKit: {image_url}")
                                 
                                 # 回傳圖片
                                 line_bot_api.reply_message(
@@ -263,36 +263,31 @@ def handle_message(event):
                                         preview_image_url=image_url
                                     )
                                 )
-                                logger.info("已回傳油價趨勢圖")
+                                logger.info("Oil price trend chart sent")
                             else:
-                                raise ValueError("上傳結果格式不正確")
+                                raise ValueError("Invalid upload result format")
                             
                         except Exception as e:
-                            logger.error(f"上傳圖片時發生錯誤: {str(e)}")
-                            # 嘗試直接使用 buffer 回傳圖片
+                            logger.error(f"Error uploading image: {str(e)}")
+                            # 嘗試使用 ImageKit 的 URL 直接回傳
                             try:
-                                # 將圖片保存到臨時文件
-                                temp_file = f"/tmp/oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png"
-                                with open(temp_file, 'wb') as f:
-                                    f.write(buffer.getvalue())
+                                # 使用 ImageKit 的 URL 端點
+                                image_url = f"{IMAGEKIT_URL_ENDPOINT}/oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png"
                                 
-                                # 使用臨時文件回傳圖片
+                                # 回傳圖片
                                 line_bot_api.reply_message(
                                     event.reply_token,
                                     ImageSendMessage(
-                                        original_content_url=f"file://{temp_file}",
-                                        preview_image_url=f"file://{temp_file}"
+                                        original_content_url=image_url,
+                                        preview_image_url=image_url
                                     )
                                 )
-                                logger.info("已直接回傳油價趨勢圖")
-                                
-                                # 刪除臨時文件
-                                os.remove(temp_file)
+                                logger.info("Oil price trend chart sent using ImageKit URL")
                             except Exception as direct_error:
-                                logger.error(f"直接回傳圖片時發生錯誤: {str(direct_error)}")
+                                logger.error(f"Error sending image using ImageKit URL: {str(direct_error)}")
                                 line_bot_api.reply_message(
                                     event.reply_token,
-                                    TextSendMessage(text="抱歉，圖片回傳失敗，請稍後再試")
+                                    TextSendMessage(text="Sorry, failed to send the chart. Please try again later.")
                                 )
                     except Exception as e:
                         logger.error(f"上傳圖片時發生錯誤: {str(e)}")
