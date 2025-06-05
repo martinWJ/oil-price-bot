@@ -255,19 +255,22 @@ def handle_message(event):
                             logger.info(f"ImageKit upload result: {upload_result}")
                             
                             # 檢查上傳結果
-                            if isinstance(upload_result, dict) and 'url' in upload_result:
-                                image_url = upload_result['url']
-                                logger.info(f"Successfully uploaded image to ImageKit: {image_url}")
-                                
-                                # 回傳圖片
-                                line_bot_api.reply_message(
-                                    event.reply_token,
-                                    ImageSendMessage(
-                                        original_content_url=image_url,
-                                        preview_image_url=image_url
+                            if upload_result and isinstance(upload_result, dict):
+                                image_url = upload_result.get('url')
+                                if image_url:
+                                    logger.info(f"Successfully uploaded image to ImageKit: {image_url}")
+                                    
+                                    # 回傳圖片
+                                    line_bot_api.reply_message(
+                                        event.reply_token,
+                                        ImageSendMessage(
+                                            original_content_url=image_url,
+                                            preview_image_url=image_url
+                                        )
                                     )
-                                )
-                                logger.info("Oil price trend chart sent")
+                                    logger.info("Oil price trend chart sent")
+                                else:
+                                    raise ValueError("No URL in upload result")
                             else:
                                 raise ValueError("Invalid upload result format")
                             
