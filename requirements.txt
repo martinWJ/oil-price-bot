@@ -9,4 +9,4 @@ numpy==1.21.2
 imagekitio==4.1.0
 undetected-chromedriver==3.5.3
 selenium==4.10.0
-gunicorn==20.1.0 
+gunicorn==20.1.0

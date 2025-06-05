@@ -103,8 +103,8 @@ def get_current_oil_price():
             # 移除「汽油」字樣
             name = name.replace('汽油', '')
             message += f"{name}: {price} 元/公升\n"
-            
-            return message
+        
+        return message
     except Exception as e:
         logger.error(f"抓取當前油價時發生錯誤: {str(e)}")
         return None
@@ -133,11 +133,11 @@ def get_oil_price_trend():
         except json.JSONDecodeError as e:
             logger.error(f"解析油價資料時發生錯誤: {e}")
             return None
-            
+        
         if not price_data:
             logger.error("油價資料為空")
             return None
-            
+        
         dates = []
         prices_92 = []
         prices_95 = []
