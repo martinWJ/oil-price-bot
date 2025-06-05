@@ -255,8 +255,12 @@ def handle_message(event):
                                 from urllib.parse import urljoin
                                 
                                 upload_url = "https://upload.imagekit.io/api/v1/files/upload"
+                                private_key = os.getenv('IMAGEKIT_PRIVATE_KEY')
+                                auth_string = f"{private_key}:"
+                                auth_b64 = base64.b64encode(auth_string.encode()).decode()
+                                
                                 headers = {
-                                    "Authorization": f"Basic {base64.b64encode(f'{os.getenv("IMAGEKIT_PRIVATE_KEY")}:'.encode()).decode()}"
+                                    "Authorization": f"Basic {auth_b64}"
                                 }
                                 
                                 data = {
