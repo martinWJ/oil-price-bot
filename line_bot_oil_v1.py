@@ -168,7 +168,9 @@ def get_oil_price_trend():
         num_data_points = len(prices_92) # 根據價格數據點數量來驗證找到的日期列表長度
 
         # 嘗試尋找所有可能的 JavaScript 字串陣列
-        js_string_array_pattern = r'var\s+([a-zA-Z0-9_]+)\s*=\s*(\[(?:['"].*?['"](?:\s*,\s*['"].*?['"])*)?\]);';
+        # 更廣泛地查找可能是包含字串列表的變數
+        # 修正正則表達式的寫法，確保方括號和引號正確匹配
+        js_string_array_pattern = r'var\s+([a-zA-Z0-9_]+)\s*=\s*\[\s*(?:[\'\"][^\'\"]*[\'\"](?:\s*,\s*[\'\"][^\'\"]*[\'\"])*)?\s*\];';
         js_arrays = re.findall(js_string_array_pattern, html)
         
         found_dates = False
