@@ -251,42 +251,43 @@ def handle_message(event):
                                 # 將圖片轉換為 base64
                                 base64_image = base64.b64encode(file_bytes).decode('utf-8')
                                 
-                                upload_result = imagekit.upload_file(
-                                    file=base64_image,
-                                    file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
-                                    options={
-                                        "response_fields": ["url"],
-                                        "tags": ["oil_price", "trend"]
-                                    }
-                                )
+                                # 使用 requests 直接調用 ImageKit API
+                                from urllib.parse import urljoin
                                 
-                                logger.info(f"ImageKit upload result type: {type(upload_result)}")
-                                logger.info(f"ImageKit upload result: {upload_result}")
+                                upload_url = "https://upload.imagekit.io/api/v1/files/upload"
+                                headers = {
+                                    "Authorization": f"Basic {base64.b64encode(f'{os.getenv("IMAGEKIT_PRIVATE_KEY")}:'.encode()).decode()}"
+                                }
                                 
-                                # 檢查上傳結果
-                                if upload_result:
-                                    if isinstance(upload_result, dict):
-                                        image_url = upload_result.get('url')
-                                    else:
-                                        # 如果 upload_result 是字串，直接使用
-                                        image_url = str(upload_result)
-                                        
-                                    if image_url:
-                                        logger.info(f"Successfully uploaded image to ImageKit: {image_url}")
-                                        
-                                        # 回傳圖片
-                                        line_bot_api.reply_message(
-                                            event.reply_token,
-                                            ImageSendMessage(
-                                                original_content_url=image_url,
-                                                preview_image_url=image_url
-                                            )
+                                data = {
+                                    "file": base64_image,
+                                    "fileName": f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
+                                    "useUniqueFileName": "true",
+                                    "tags": ["oil_price", "trend"],
+                                    "responseFields": ["url"]
+                                }
+                                
+                                response = requests.post(upload_url, headers=headers, data=data)
+                                response.raise_for_status()
+                                upload_result = response.json()
+                                
+                                logger.info(f"ImageKit upload response: {upload_result}")
+                                
+                                if upload_result and 'url' in upload_result:
+                                    image_url = upload_result['url']
+                                    logger.info(f"Successfully uploaded image to ImageKit: {image_url}")
+                                    
+                                    # 回傳圖片
+                                    line_bot_api.reply_message(
+                                        event.reply_token,
+                                        ImageSendMessage(
+                                            original_content_url=image_url,
+                                            preview_image_url=image_url
                                         )
-                                        logger.info("Oil price trend chart sent")
-                                    else:
-                                        raise ValueError("No URL in upload result")
+                                    )
+                                    logger.info("Oil price trend chart sent")
                                 else:
-                                    raise ValueError("Empty upload result")
+                                    raise ValueError("No URL in upload result")
                                     
                             except Exception as e:
                                 logger.error(f"Error uploading image: {str(e)}")
