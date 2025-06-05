@@ -52,7 +52,11 @@ IMAGEKIT_PRIVATE_KEY = os.getenv('IMAGEKIT_PRIVATE_KEY')
 IMAGEKIT_URL_ENDPOINT = os.getenv('IMAGEKIT_URL_ENDPOINT')
 
 # 初始化 ImageKit
-imagekit = ImageKit(public_key=IMAGEKIT_PUBLIC_KEY, private_key=IMAGEKIT_PRIVATE_KEY, url_endpoint=IMAGEKIT_URL_ENDPOINT)
+imagekit = ImageKit(
+    private_key=os.getenv('IMAGEKIT_PRIVATE_KEY'),
+    public_key=os.getenv('IMAGEKIT_PUBLIC_KEY'),
+    url_endpoint=os.getenv('IMAGEKIT_URL_ENDPOINT')
+)
 
 def get_current_oil_price():
     try:
@@ -243,48 +247,56 @@ def handle_message(event):
                                 file_bytes = file.read()
                             
                             # 上傳到 ImageKit
-                            upload_result = imagekit.upload_file(
-                                file=file_bytes,
-                                file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
-                                options={
-                                    "response_fields": ["url"],
-                                    "tags": ["oil_price", "trend"]
-                                }
-                            )
-                            
-                            logger.info(f"ImageKit upload result: {upload_result}")
-                            
-                            # 檢查上傳結果
-                            if upload_result and isinstance(upload_result, dict):
-                                image_url = upload_result.get('url')
-                                if image_url:
-                                    logger.info(f"Successfully uploaded image to ImageKit: {image_url}")
+                            try:
+                                upload_result = imagekit.upload_file(
+                                    file=file_bytes,
+                                    file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
+                                    options={
+                                        "response_fields": ["url"],
+                                        "tags": ["oil_price", "trend"]
+                                    }
+                                )
+                                
+                                logger.info(f"ImageKit upload result type: {type(upload_result)}")
+                                logger.info(f"ImageKit upload result: {upload_result}")
+                                
+                                # 檢查上傳結果
+                                if upload_result:
+                                    if isinstance(upload_result, dict):
+                                        image_url = upload_result.get('url')
+                                    else:
+                                        # 如果 upload_result 是字串，直接使用
+                                        image_url = str(upload_result)
+                                        
+                                    if image_url:
+                                        logger.info(f"Successfully uploaded image to ImageKit: {image_url}")
+                                        
+                                        # 回傳圖片
+                                        line_bot_api.reply_message(
+                                            event.reply_token,
+                                            ImageSendMessage(
+                                                original_content_url=image_url,
+                                                preview_image_url=image_url
+                                            )
+                                        )
+                                        logger.info("Oil price trend chart sent")
+                                    else:
+                                        raise ValueError("No URL in upload result")
+                                else:
+                                    raise ValueError("Empty upload result")
                                     
+                            except Exception as e:
+                                logger.error(f"Error uploading image: {str(e)}")
+                                logger.error(f"Error type: {type(e)}")
+                                # 如果上傳失敗，直接使用本地檔案
+                                try:
                                     # 回傳圖片
                                     line_bot_api.reply_message(
                                         event.reply_token,
-                                        ImageSendMessage(
-                                            original_content_url=image_url,
-                                            preview_image_url=image_url
-                                        )
+                                        TextSendMessage(text="Sorry, unable to upload the image. Please try again later.")
                                     )
-                                    logger.info("Oil price trend chart sent")
-                                else:
-                                    raise ValueError("No URL in upload result")
-                            else:
-                                raise ValueError("Invalid upload result format")
-                            
-                        except Exception as e:
-                            logger.error(f"Error uploading image: {str(e)}")
-                            # 如果上傳失敗，直接使用本地檔案
-                            try:
-                                # 回傳圖片
-                                line_bot_api.reply_message(
-                                    event.reply_token,
-                                    TextSendMessage(text="Sorry, unable to upload the image. Please try again later.")
-                                )
-                            except Exception as direct_error:
-                                logger.error(f"Error sending error message: {str(direct_error)}")
+                                except Exception as direct_error:
+                                    logger.error(f"Error sending error message: {str(direct_error)}")
                         finally:
                             # 清理臨時檔案
                             try:
