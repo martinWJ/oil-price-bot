@@ -162,38 +162,100 @@ def get_oil_price_trend():
         if not all([prices_92, prices_95, prices_98, prices_diesel]):
             logger.error("無法取得完整的油價資料")
             return None
-        
-        # 生成過去 7 天的日期作為 X 軸標籤
-        today = datetime.now()
-        # 生成過去 7 天的日期列表 (包含今天)
-        dates = [(today - timedelta(days=i)).strftime('%m/%d') for i in range(6, -1, -1)] # 從過去第六天到今天
-        
-        # 確認日期數量與價格數據數量一致
-        if len(dates) != len(prices_92):
-             logger.error(f"日期數量與價格數據數量不一致: 日期={len(dates)}, 價格={len(prices_92)}")
-             # 如果數量不一致，暫時回退使用數字作為標籤
-             dates = list(range(1, len(prices_92) + 1))
 
+        # 嘗試從網頁內容中提取日期標籤
+        date_labels = []
         
+        # 嘗試尋找所有可能的 JavaScript 變數，檢查是否包含日期列表
+        # 更廣泛地查找可能是包含字串列表的變數
+        js_array_pattern = r'var\s+([a-zA-Z0-9_]+)\s*=\s*(\[.*?\]);';
+        js_arrays = re.findall(js_array_pattern, html)
+        
+        found_dates = False
+        for var_name, array_str in js_arrays:
+            try:
+                # 嘗試解析為 JSON 列表
+                array_str = array_str.replace("'", '"')
+                data_list = json.loads(array_str)
+                
+                # 檢查列表中的元素是否可能是日期格式 (簡單檢查是否為字串且包含 '/')
+                if data_list and isinstance(data_list[0], str) and '/' in data_list[0]:
+                    logger.info(f"找到可能的日期變數 '{var_name}': {data_list}")
+                    
+                    # 嘗試解析並格式化日期
+                    formatted_dates = []
+                    for date_str in data_list:
+                        try:
+                            # 嘗試解析 'YYYY/MM/DD' 或 'YYY/MM/DD' 格式
+                            if len(date_str.split('/')[0]) <= 3: # 可能是民國紀年
+                                year, month, day = map(int, date_str.split('/'))
+                                # 將民國紀年轉換為西元紀年
+                                western_year = year + 1911
+                                datetime_obj = datetime(western_year, month, day)
+                            else:
+                                # 假設是西元紀年 'YYYY/MM/DD'
+                                datetime_obj = datetime.strptime(date_str, '%Y/%m/%d')
+                                
+                            # 格式化為 'MM/DD'
+                            formatted_dates.append(datetime_obj.strftime('%m/%d'))
+                        except (ValueError, IndexError) as e:
+                            # 如果解析或轉換失敗，保留原始字串並記錄錯誤
+                            logger.warning(f"無法解析或轉換日期字串 '{date_str}': {str(e)}")
+                            formatted_dates.append(date_str) # 保留原始字串
+                            
+                    # 如果成功解析的日期數量與價格數據數量一致，則認為找到正確的日期標籤
+                    if len(formatted_dates) == len(prices_92):
+                        date_labels = formatted_dates
+                        found_dates = True
+                        logger.info("成功提取並格式化日期標籤")
+                        break # 找到正確的日期後就停止搜索
+                        
+            except Exception as e:
+                # 解析 JSON 或其他錯誤
+                logger.warning(f"解析 JavaScript 變數 '{var_name}' 時發生錯誤: {str(e)}")
+                
+        if not found_dates:
+            logger.warning("無法從網頁內容中提取日期標籤，使用數字標籤")
+            # 如果沒有找到符合的日期列表，回退使用數字作為標籤
+            date_labels = list(range(1, len(prices_92) + 1))
+
+        # 確保日期標籤數量與價格數據數量一致 (儘管上面已經檢查過一次，這裡再檢查一次作為保險)
+        if len(date_labels) != len(prices_92):
+            logger.error(f"日期標籤數量與價格數據數量最終不一致: 標籤={len(date_labels)}, 價格={len(prices_92)}")
+            # 如果數量不一致，回退使用數字作為標籤
+            date_labels = list(range(1, len(prices_92) + 1))
+
         plt.figure(figsize=(10, 6))
-        plt.plot(dates, prices_92, marker='o', label='92 Unleaded')
-        plt.plot(dates, prices_95, marker='o', label='95 Unleaded')
-        plt.plot(dates, prices_98, marker='o', label='98 Unleaded')
-        plt.plot(dates, prices_diesel, marker='o', label='Super Diesel')
+        plt.plot(date_labels, prices_92, marker='o', label='92 Unleaded')
+        plt.plot(date_labels, prices_95, marker='o', label='95 Unleaded')
+        plt.plot(date_labels, prices_98, marker='o', label='98 Unleaded')
+        plt.plot(date_labels, prices_diesel, marker='o', label='Super Diesel')
         
-        for x, y in zip(dates, prices_92):
+        for x, y in zip(date_labels, prices_92):
             plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
-        for x, y in zip(dates, prices_95):
+        for x, y in zip(date_labels, prices_95):
             plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
-        for x, y in zip(dates, prices_98):
+        for x, y in zip(date_labels, prices_98):
             plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
-        for x, y in zip(dates, prices_diesel):
+        for x, y in zip(date_labels, prices_diesel):
             plt.text(x, y, f"{y:.1f}", ha='center', va='bottom', fontsize=10)
             
         plt.xlabel('Date')
         plt.ylabel('Price (NTD/L)')
         plt.title('CPC Oil Price Trend')
-        plt.xticks(dates, rotation=45)
+        # 使用提取或生成的日期標籤設置 X 軸刻度
+        plt.xticks(rotation=45)
+        # 這裡我們已經在 plot 函數中使用了 date_labels 作為 x 的值，matplotlib 會自動處理刻度
+        # 如果需要明確設置刻度位置和標籤，可以使用 plt.xticks(list(range(len(date_labels))), date_labels, rotation=45)
+        # 但考慮到 date_labels 可能不是等間隔的，直接傳入 plot 可能更合適
+        # 為了確保刻度顯示正確，如果 date_labels 是字串列表，我們應該 explicitly set tick locations and labels
+        if all(isinstance(d, str) for d in date_labels):
+             plt.xticks(list(range(len(date_labels))), date_labels, rotation=45)
+        else:
+             # 如果回退使用了數字標籤，xticks 的處理方式可能需要不同
+             # 目前的 plt.xticks(rotation=45) 在使用數字標籤時應該可以工作
+             pass # 保留原樣或者根據需要調整
+             
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
