@@ -159,12 +159,21 @@ def get_oil_price_trend():
                 elif '柴油' in item.get('label', ''):
                     prices_diesel = [float(x) for x in item['data']]
         
-        if prices_92:
-            dates = list(range(1, len(prices_92) + 1))
-        
-        if not all([dates, prices_92, prices_95, prices_98, prices_diesel]):
+        if not all([prices_92, prices_95, prices_98, prices_diesel]):
             logger.error("無法取得完整的油價資料")
             return None
+        
+        # 生成過去 7 天的日期作為 X 軸標籤
+        today = datetime.now()
+        # 生成過去 7 天的日期列表 (包含今天)
+        dates = [(today - timedelta(days=i)).strftime('%m/%d') for i in range(6, -1, -1)] # 從過去第六天到今天
+        
+        # 確認日期數量與價格數據數量一致
+        if len(dates) != len(prices_92):
+             logger.error(f"日期數量與價格數據數量不一致: 日期={len(dates)}, 價格={len(prices_92)}")
+             # 如果數量不一致，暫時回退使用數字作為標籤
+             dates = list(range(1, len(prices_92) + 1))
+
         
         plt.figure(figsize=(10, 6))
         plt.plot(dates, prices_92, marker='o', label='92 Unleaded')
@@ -184,7 +193,7 @@ def get_oil_price_trend():
         plt.xlabel('Date')
         plt.ylabel('Price (NTD/L)')
         plt.title('CPC Oil Price Trend')
-        plt.xticks(rotation=45)
+        plt.xticks(dates, rotation=45)
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
