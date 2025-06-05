@@ -248,8 +248,11 @@ def handle_message(event):
                             
                             # 上傳到 ImageKit
                             try:
+                                # 將圖片轉換為 base64
+                                base64_image = base64.b64encode(file_bytes).decode('utf-8')
+                                
                                 upload_result = imagekit.upload_file(
-                                    file=file_bytes,
+                                    file=base64_image,
                                     file_name=f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
                                     options={
                                         "response_fields": ["url"],
