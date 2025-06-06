@@ -161,53 +161,38 @@ def get_oil_price_trend():
         prices_diesel = []
 
         # 提取日期和價格
-        if price_data and isinstance(price_data[0], dict) and 'data' in price_data[0]:
-             # 假設 pieSeries[0] 包含日期和所有油品的數據
-            for item in price_data[0]['data']:
-                if isinstance(item, dict) and 'name' in item and 'y' in item:
-                    # name 應該是民國日期，y 應該是油價
-                    # 需要根據 series name (e.g., '92無鉛汽油') 來區分不同油品
-                    pass # We will process data points inside the series loop below
+        # if price_data and isinstance(price_data[0], dict) and 'data' in price_data[0]:
+        #      # 假設 pieSeries[0] 包含日期和所有油品的數據
+        #     for item in price_data[0]['data']:
+        #         if isinstance(item, dict) and 'name' in item and 'y' in item:
+        #             # name 應該是民國日期，y 應該是油價
+        #             # 需要根據 series name (e.g., '92無鉛汽油') 來區分不同油品
+        #             pass # We will process data points inside the series loop below
 
-        # 重新組織數據，根據 series 標籤提取各油品價格
-        oil_prices = {
-            '92無鉛汽油': [],
-            '95無鉛汽油': [],
-            '98無鉛汽油': [],
-            '超級/高級柴油': [] # Use the exact label from the data
-        }
-        dates_roc_temp = [] # Temporary list to store ROC dates from the first series
+        # 重新組織數據，根據新的 pieSeries 結構提取日期和價格
+        for date_entry in price_data:
+            if isinstance(date_entry, dict) and 'name' in date_entry and 'data' in date_entry:
+                dates_roc.append(date_entry['name'])
+                # 初始化當前日期的油價列表
+                current_prices = {
+                    '92無鉛汽油': None,
+                    '95無鉛汽油': None,
+                    '98無鉛汽油': None,
+                    '超級/高級柴油': None
+                }
+                # 提取當前日期的各油品價格
+                for oil_data_point in date_entry['data']:
+                    if isinstance(oil_data_point, dict) and 'name' in oil_data_point and 'y' in oil_data_point:
+                        oil_name = oil_data_point['name']
+                        price = oil_data_point['y']
+                        if oil_name in current_prices:
+                            current_prices[oil_name] = price
 
-        # 找到包含數據的 series
-        data_series = None
-        for series in price_data:
-            if isinstance(series, dict) and 'data' in series and series.get('type') == 'line': # Assumes line series contain the data
-                data_series = series['data']
-                break
-
-        if not data_series:
-             logger.error("找不到包含油價數據的 series")
-             return None
-
-        # 從第一個數據點提取日期 (假設所有 series 的日期順序一致)
-        if data_series:
-             dates_roc = [item.get('name') for item in data_series if isinstance(item, dict)]
-             # 過濾掉 None 值以防萬一
-             dates_roc = [date for date in dates_roc if date is not None]
-
-        # 提取各油品價格
-        for series in price_data:
-             if isinstance(series, dict) and 'label' in series and 'data' in series:
-                  label = series['label']
-                  data = series['data']
-                  if label == '92無鉛汽油' and len(data) == len(dates_roc):
-                       prices_92 = [float(x) if x is not None else None for x in data] # Handle potential None values
-                  elif label == '95無鉛汽油' and len(data) == len(dates_roc):
-                       prices_95 = [float(x) if x is not None else None for x in data]
-                  elif label == '98無鉛汽油' and len(data) == len(dates_roc):
-                       prices_98 = [float(x) if x is not None else None for x in data]
-                  elif label in ['超級柴油', '超級/高級柴油'] and len(data) == len(dates_roc): # Handle both possible labels
-                       prices_diesel = [float(x) if x is not None else None for x in data]
+                # 將提取到的價格按順序添加到對應的價格列表中
+                prices_92.append(current_prices['92無鉛汽油'])
+                prices_95.append(current_prices['95無鉛汽油'])
+                prices_98.append(current_prices['98無鉛汽油'])
+                prices_diesel.append(current_prices['超級/高級柴油'])
 
 
         if not (prices_92 and prices_95 and prices_98 and prices_diesel and dates_roc and len(dates_roc) == len(prices_92) == len(prices_95) == len(prices_98) == len(prices_diesel)):
