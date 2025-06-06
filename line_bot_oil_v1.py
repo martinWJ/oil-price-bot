@@ -197,11 +197,13 @@ def get_oil_price_trend():
         # 按照日期排序並整理數據
         # 過濾掉數據不完整的日期點 (任一油品價格為 None 或日期為 None)
         sorted_and_filtered_dates_roc = sorted([date for date, prices in dated_oil_prices.items() if
-                                               date is not None and
-                                               prices.get('92無鉛汽油') is not None and
-                                               prices.get('95無鉛汽油') is not None and
-                                               prices.get('98無鉛汽油') is not None and
-                                               prices.get('超級/高級柴油') is not None])
+                                               date is not None and (
+                                                   prices.get('92無鉛汽油') is not None or
+                                                   prices.get('95無鉛汽油') is not None or
+                                                   prices.get('98無鉛汽油') is not None or
+                                                   prices.get('超級/高級柴油') is not None
+                                               )
+                                               ])
 
         # 如果過濾後沒有任何有效的日期數據，則返回 None
         if not sorted_and_filtered_dates_roc:
