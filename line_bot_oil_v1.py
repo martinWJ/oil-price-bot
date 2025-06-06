@@ -168,60 +168,27 @@ def get_oil_price_trend():
         num_data_points = len(prices_92) # 根據價格數據點數量來驗證找到的日期列表長度
 
         # 嘗試尋找所有可能的 JavaScript 字串陣列
-        # 更廣泛地查找可能是包含字串列表的變數
-        # 修正正則表達式的寫法，確保方括號和引號正確匹配
-        js_string_array_pattern = r'var\s+([a-zA-Z0-9_]+)\s*=\s*\[\s*(?:[\'\"][^\'\"]*[\'\"](?:\s*,\s*[\'\"][^\'\"]*[\'\"])*)?\s*\];';
-        js_arrays = re.findall(js_string_array_pattern, html)
+        js_string_array_pattern = r'var\s+([a-zA-Z0-9_]+)\s*=\s*\[(.*?)\];'
+        js_arrays = re.finditer(js_string_array_pattern, html, re.DOTALL)
         
         found_dates = False
-        for var_name, array_str in js_arrays:
+        for match in js_arrays:
+            var_name = match.group(1)
+            array_str = match.group(2)
             try:
                 # 嘗試解析為 JSON 列表
-                # 將單引號替換為雙引號以便 json.loads 解析
                 array_str = array_str.replace("'", '"')
-                data_list = json.loads(array_str)
+                data_list = json.loads(f"[{array_str}]")
                 
-                # 檢查列表中的元素是否都是字串
-                if data_list and all(isinstance(item, str) for item in data_list):
-                     logger.info(f"找到可能的字串陣列變數 '{var_name}': {data_list}")
+                # 檢查是否為日期列表
+                if len(data_list) == num_data_points and all(isinstance(x, str) for x in data_list):
+                    date_labels = data_list
+                    found_dates = True
+                    logger.info(f"找到日期標籤: {date_labels}")
+                    break
+            except json.JSONDecodeError:
+                continue
 
-                     # 檢查列表長度是否與數據點數量一致，並且字串包含 '/' (日期格式的常見分隔符)
-                     if len(data_list) == num_data_points and all('/' in s for s in data_list):
-                        logger.info(f"找到可能的日期標籤變數 '{var_name}', 嘗試解析日期")
-                        
-                        # 嘗試解析並格式化日期
-                        formatted_dates = []
-                        for date_str in data_list:
-                            try:
-                                # 嘗試解析 'YYYY/MM/DD' 或 'YYY/MM/DD' 格式
-                                parts = date_str.split('/')
-                                if len(parts[0]) <= 3: # 可能是民國紀年
-                                    year, month, day = map(int, parts)
-                                    # 將民國紀年轉換為西元紀年
-                                    western_year = year + 1911
-                                    datetime_obj = datetime(western_year, month, day)
-                                else:
-                                    # 假設是西元紀年 'YYYY/MM/DD'
-                                    datetime_obj = datetime.strptime(date_str, '%Y/%m/%d')
-                                    
-                                # 格式化為 'MM/DD'
-                                formatted_dates.append(datetime_obj.strftime('%m/%d'))
-                            except (ValueError, IndexError) as e:
-                                # 如果解析或轉換失敗，保留原始字串並記錄錯誤
-                                logger.warning(f"無法解析或轉換日期字串 '{date_str}': {str(e)}")
-                                formatted_dates.append(date_str) # 保留原始字串
-                                
-                        # 如果成功解析的日期數量與數據點數量一致，則認為找到正確的日期標籤
-                        if len(formatted_dates) == num_data_points:
-                            date_labels = formatted_dates
-                            found_dates = True
-                            logger.info("成功提取、解析並格式化日期標籤")
-                            break # 找到正確的日期後就停止搜索
-                            
-            except Exception as e:
-                # 解析 JSON 或其他錯誤
-                logger.warning(f"解析 JavaScript 變數 '{var_name}' 時發生錯誤: {str(e)}")
-                
         if not found_dates:
             logger.warning("無法從網頁內容中提取日期標籤，使用數字標籤")
             # 如果沒有找到符合的日期列表，回退使用數字作為標籤
