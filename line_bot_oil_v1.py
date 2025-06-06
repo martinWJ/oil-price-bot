@@ -231,10 +231,15 @@ def get_oil_price_trend():
 
         # 在每個點上添加價格標籤，使用索引作為 X 軸位置
         for i in x_indices:
-             plt.text(i, prices_92[i], f"{prices_92[i]:.1f}", ha='center', va='bottom', fontsize=9) # Smaller font size
-             plt.text(i, prices_95[i], f"{prices_95[i]:.1f}", ha='center', va='bottom', fontsize=9)
-             plt.text(i, prices_98[i], f"{prices_98[i]:.1f}", ha='center', va='bottom', fontsize=9)
-             plt.text(i, prices_diesel[i], f"{prices_diesel[i]:.1f}", ha='center', va='bottom', fontsize=9)
+            # 檢查價格是否為 None，如果不是則添加標籤
+            if prices_92[i] is not None:
+                plt.text(i, prices_92[i], f"{prices_92[i]:.1f}", ha='center', va='bottom', fontsize=9) # Smaller font size
+            if prices_95[i] is not None:
+                plt.text(i, prices_95[i], f"{prices_95[i]:.1f}", ha='center', va='bottom', fontsize=9)
+            if prices_98[i] is not None:
+                plt.text(i, prices_98[i], f"{prices_98[i]:.1f}", ha='center', va='bottom', fontsize=9)
+            if prices_diesel[i] is not None:
+                plt.text(i, prices_diesel[i], f"{prices_diesel[i]:.1f}", ha='center', va='bottom', fontsize=9)
 
 
         plt.xlabel('Date')
