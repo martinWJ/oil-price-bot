@@ -58,6 +58,18 @@ imagekit = ImageKit(
     url_endpoint=os.getenv('IMAGEKIT_URL_ENDPOINT')
 )
 
+def tw_date_to_ad_date(tw_date_str):
+    """Converts a Republic of China (Taiwan) calendar date string (YYY/MM/DD) to a Western calendar date string (YYYY-MM-DD)."""
+    try:
+        year_roc, month, day = map(int, tw_date_str.split('/'))
+        year_ad = year_roc + 1911
+        # Use datetime to format the date correctly, ensuring leading zeros for month/day
+        date_obj = datetime(year_ad, month, day)
+        return date_obj.strftime('%Y-%m-%d')
+    except Exception as e:
+        logger.error(f"Error converting ROC date {tw_date_str} to AD date: {str(e)}")
+        return tw_date_str # Return original string if conversion fails
+
 def get_current_oil_price():
     try:
         url = 'https://www.cpc.com.tw/'
@@ -120,107 +132,126 @@ def get_oil_price_trend():
         response = requests.get(url)
         response.raise_for_status()
         html = response.text
-        
-        match = re.search(r'var\s+priceData\s*=\s*(\[.*?\]);', html, re.DOTALL)
+
+        # 精確匹配 var pieSeries = [...]
+        match = re.search(r'var\s+pieSeries\s*=\s*(\[.*?\]);', html, re.DOTALL)
         if not match:
-            match = re.search(r'var\s+[a-zA-Z0-9_]+\s*=\s*(\[.*?\]);', html, re.DOTALL)
-            if not match:
-                logger.error("找不到油價資料")
-                return None
-                
+            logger.error("找不到 pieSeries 油價資料")
+            return None
+
         price_data_str = match.group(1)
-        logger.info(f"找到的資料字串: {price_data_str[:100]}...")
-        
+        logger.info(f"找到的資料字串 (pieSeries): {price_data_str[:100]}...")
+
         try:
-            price_data_str = price_data_str.replace("'", '"')
+            # 將單引號替換為雙引號，並處理 JavaScript 的 undefined
+            price_data_str = price_data_str.replace("'", '"').replace("undefined", "null")
             price_data = json.loads(price_data_str)
         except json.JSONDecodeError as e:
-            logger.error(f"解析油價資料時發生錯誤: {e}")
+            logger.error(f"解析 pieSeries 油價資料時發生錯誤: {e}")
             return None
-        
+
         if not price_data:
-            logger.error("油價資料為空")
+            logger.error("pieSeries 油價資料為空")
             return None
-        
-        dates = []
+
+        dates_roc = []
         prices_92 = []
         prices_95 = []
         prices_98 = []
         prices_diesel = []
-        
-        for item in price_data:
-            if isinstance(item, dict) and 'data' in item:
-                if '92' in item.get('label', ''):
-                    prices_92 = [float(x) for x in item['data']]
-                elif '95' in item.get('label', ''):
-                    prices_95 = [float(x) for x in item['data']]
-                elif '98' in item.get('label', ''):
-                    prices_98 = [float(x) for x in item['data']]
-                elif '柴油' in item.get('label', ''):
-                    prices_diesel = [float(x) for x in item['data']]
-        
-        if not all([prices_92, prices_95, prices_98, prices_diesel]):
-            logger.error("無法取得完整的油價資料")
+
+        # 提取日期和價格
+        if price_data and isinstance(price_data[0], dict) and 'data' in price_data[0]:
+             # 假設 pieSeries[0] 包含日期和所有油品的數據
+            for item in price_data[0]['data']:
+                if isinstance(item, dict) and 'name' in item and 'y' in item:
+                    # name 應該是民國日期，y 應該是油價
+                    # 需要根據 series name (e.g., '92無鉛汽油') 來區分不同油品
+                    pass # We will process data points inside the series loop below
+
+        # 重新組織數據，根據 series 標籤提取各油品價格
+        oil_prices = {
+            '92無鉛汽油': [],
+            '95無鉛汽油': [],
+            '98無鉛汽油': [],
+            '超級/高級柴油': [] # Use the exact label from the data
+        }
+        dates_roc_temp = [] # Temporary list to store ROC dates from the first series
+
+        # 找到包含數據的 series
+        data_series = None
+        for series in price_data:
+            if isinstance(series, dict) and 'data' in series and series.get('type') == 'line': # Assumes line series contain the data
+                data_series = series['data']
+                break
+
+        if not data_series:
+             logger.error("找不到包含油價數據的 series")
+             return None
+
+        # 從第一個數據點提取日期 (假設所有 series 的日期順序一致)
+        if data_series:
+             dates_roc = [item.get('name') for item in data_series if isinstance(item, dict)]
+             # 過濾掉 None 值以防萬一
+             dates_roc = [date for date in dates_roc if date is not None]
+
+        # 提取各油品價格
+        for series in price_data:
+             if isinstance(series, dict) and 'label' in series and 'data' in series:
+                  label = series['label']
+                  data = series['data']
+                  if label == '92無鉛汽油' and len(data) == len(dates_roc):
+                       prices_92 = [float(x) if x is not None else None for x in data] # Handle potential None values
+                  elif label == '95無鉛汽油' and len(data) == len(dates_roc):
+                       prices_95 = [float(x) if x is not None else None for x in data]
+                  elif label == '98無鉛汽油' and len(data) == len(dates_roc):
+                       prices_98 = [float(x) if x is not None else None for x in data]
+                  elif label in ['超級柴油', '超級/高級柴油'] and len(data) == len(dates_roc): # Handle both possible labels
+                       prices_diesel = [float(x) if x is not None else None for x in data]
+
+
+        if not (prices_92 and prices_95 and prices_98 and prices_diesel and dates_roc and len(dates_roc) == len(prices_92) == len(prices_95) == len(prices_98) == len(prices_diesel)):
+            logger.error(f"無法取得完整的油價或日期資料. Dates:{len(dates_roc)}, 92:{len(prices_92)}, 95:{len(prices_95)}, 98:{len(prices_98)}, Diesel:{len(prices_diesel)}")
             return None
 
-        # 嘗試從網頁內容中提取日期標籤
-        date_labels = []
-        num_data_points = len(prices_92) # 根據價格數據點數量來驗證找到的日期列表長度
+        # 將民國日期轉換為西元日期
+        date_labels_ad = [tw_date_to_ad_date(d) for d in dates_roc]
+        # 過濾掉轉換失敗的日期和對應的價格
+        valid_data = [(date_labels_ad[i], prices_92[i], prices_95[i], prices_98[i], prices_diesel[i])
+                      for i in range(len(date_labels_ad)) if date_labels_ad[i] is not None
+                      and prices_92[i] is not None and prices_95[i] is not None and prices_98[i] is not None and prices_diesel[i] is not None]
 
-        # 嘗試尋找所有可能的 JavaScript 字串陣列
-        js_string_array_pattern = r'var\s+([a-zA-Z0-9_]+)\s*=\s*\[(.*?)\];'
-        js_arrays = re.finditer(js_string_array_pattern, html, re.DOTALL)
-        
-        found_dates = False
-        for match in js_arrays:
-            var_name = match.group(1)
-            array_str = match.group(2)
-            try:
-                # 嘗試解析為 JSON 列表
-                array_str = array_str.replace("'", '"')
-                data_list = json.loads(f"[{array_str}]")
-                
-                # 檢查是否為日期列表
-                if len(data_list) == num_data_points and all(isinstance(x, str) for x in data_list):
-                    date_labels = data_list
-                    found_dates = True
-                    logger.info(f"找到日期標籤: {date_labels}")
-                    break
-            except json.JSONDecodeError:
-                continue
+        if not valid_data:
+            logger.error("沒有有效的油價數據可供繪製圖表")
+            return None
 
-        if not found_dates:
-            logger.warning("無法從網頁內容中提取日期標籤，使用數字標籤")
-            # 如果沒有找到符合的日期列表，回退使用數字作為標籤
-            date_labels = list(range(1, num_data_points + 1))
+        # 分解有效數據
+        date_labels_ad, prices_92, prices_95, prices_98, prices_diesel = zip(*valid_data)
 
-        # 確保日期標籤數量與價格數據數量一致 (儘管上面已經檢查過一次，這裡再檢查一次作為保險)
-        if len(date_labels) != num_data_points:
-            logger.error(f"日期標籤數量與價格數據數量最終不一致: 標籤={len(date_labels)}, 價格={num_data_points}")
-            # 如果數量不一致，回退使用數字作為標籤
-            date_labels = list(range(1, num_data_points + 1))
-
-        plt.figure(figsize=(10, 6))
+        plt.figure(figsize=(12, 7)) # Adjust figure size for better readability
         # 使用索引作為 X 軸數據，並在 xticks 中設置日期標籤
-        x_indices = range(len(date_labels))
+        x_indices = range(len(date_labels_ad))
         plt.plot(x_indices, prices_92, marker='o', label='92 Unleaded')
         plt.plot(x_indices, prices_95, marker='o', label='95 Unleaded')
         plt.plot(x_indices, prices_98, marker='o', label='98 Unleaded')
         plt.plot(x_indices, prices_diesel, marker='o', label='Super Diesel')
 
         # 在每個點上添加價格標籤，使用索引作為 X 軸位置
-        for i, date in enumerate(date_labels):
-             plt.text(i, prices_92[i], f"{prices_92[i]:.1f}", ha='center', va='bottom', fontsize=10)
-             plt.text(i, prices_95[i], f"{prices_95[i]:.1f}", ha='center', va='bottom', fontsize=10)
-             plt.text(i, prices_98[i], f"{prices_98[i]:.1f}", ha='center', va='bottom', fontsize=10)
-             plt.text(i, prices_diesel[i], f"{prices_diesel[i]:.1f}", ha='center', va='bottom', fontsize=10)
+        for i in x_indices:
+             plt.text(i, prices_92[i], f"{prices_92[i]:.1f}", ha='center', va='bottom', fontsize=9) # Smaller font size
+             plt.text(i, prices_95[i], f"{prices_95[i]:.1f}", ha='center', va='bottom', fontsize=9)
+             plt.text(i, prices_98[i], f"{prices_98[i]:.1f}", ha='center', va='bottom', fontsize=9)
+             plt.text(i, prices_diesel[i], f"{prices_diesel[i]:.1f}", ha='center', va='bottom', fontsize=9)
+
 
         plt.xlabel('Date')
         plt.ylabel('Price (NTD/L)')
         plt.title('CPC Oil Price Trend')
 
         # 設置 X 軸刻度位置和標籤
-        plt.xticks(x_indices, date_labels, rotation=45, ha='right') #ha='right' 讓標籤右對齊刻度線
+        # 顯示所有日期標籤
+        plt.xticks(x_indices, date_labels_ad, rotation=45, ha='right', fontsize=10) #ha='right' 讓標籤右對齊刻度線
+
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
@@ -229,11 +260,13 @@ def get_oil_price_trend():
         plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
         buffer.seek(0)
         plt.close()
-        
-        logger.info("Oil price trend chart generated in memory")
+
+        logger.info("Oil price trend chart generated in memory with corrected dates")
         return buffer
     except Exception as e:
         logger.error(f"生成油價趨勢圖表時發生錯誤: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc()) # Log full traceback
         return None
 
 @app.route("/webhook", methods=['POST'])
