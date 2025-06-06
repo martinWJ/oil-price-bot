@@ -201,32 +201,30 @@ def get_oil_price_trend():
             date_labels = list(range(1, num_data_points + 1))
 
         plt.figure(figsize=(10, 6))
-        # 使用提取或生成的日期標籤作為 X 軸數據
-        plt.plot(date_labels, prices_92, marker='o', label='92 Unleaded')
-        plt.plot(date_labels, prices_95, marker='o', label='95 Unleaded')
-        plt.plot(date_labels, prices_98, marker='o', label='98 Unleaded')
-        plt.plot(date_labels, prices_diesel, marker='o', label='Super Diesel')
-        
-        # 在每個點上添加價格標籤
+        # 使用索引作為 X 軸數據，並在 xticks 中設置日期標籤
+        x_indices = range(len(date_labels))
+        plt.plot(x_indices, prices_92, marker='o', label='92 Unleaded')
+        plt.plot(x_indices, prices_95, marker='o', label='95 Unleaded')
+        plt.plot(x_indices, prices_98, marker='o', label='98 Unleaded')
+        plt.plot(x_indices, prices_diesel, marker='o', label='Super Diesel')
+
+        # 在每個點上添加價格標籤，使用索引作為 X 軸位置
         for i, date in enumerate(date_labels):
-             plt.text(date, prices_92[i], f"{prices_92[i]:.1f}", ha='center', va='bottom', fontsize=10)
-             plt.text(date, prices_95[i], f"{prices_95[i]:.1f}", ha='center', va='bottom', fontsize=10)
-             plt.text(date, prices_98[i], f"{prices_98[i]:.1f}", ha='center', va='bottom', fontsize=10)
-             plt.text(date, prices_diesel[i], f"{prices_diesel[i]:.1f}", ha='center', va='bottom', fontsize=10)
-            
+             plt.text(i, prices_92[i], f"{prices_92[i]:.1f}", ha='center', va='bottom', fontsize=10)
+             plt.text(i, prices_95[i], f"{prices_95[i]:.1f}", ha='center', va='bottom', fontsize=10)
+             plt.text(i, prices_98[i], f"{prices_98[i]:.1f}", ha='center', va='bottom', fontsize=10)
+             plt.text(i, prices_diesel[i], f"{prices_diesel[i]:.1f}", ha='center', va='bottom', fontsize=10)
+
         plt.xlabel('Date')
         plt.ylabel('Price (NTD/L)')
         plt.title('CPC Oil Price Trend')
-        
-        # 設置 X 軸刻度和標籤，確保所有標籤都顯示且旋轉
-        # 我們已經使用日期字串作為 plot 的 x 值，matplotlib 會嘗試將其作為類別數據處理
-        # 如果需要更精確的控制刻度位置，可以使用數字索引作為 plot 的 x 值，然後在 xticks 中設置標籤
-        # 這裡我們假設直接使用日期字串作為 x 值，matplotlib 可以正確處理
-        plt.xticks(rotation=45)
+
+        # 設置 X 軸刻度位置和標籤
+        plt.xticks(x_indices, date_labels, rotation=45, ha='right') #ha='right' 讓標籤右對齊刻度線
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
-        
+
         buffer = BytesIO()
         plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
         buffer.seek(0)
