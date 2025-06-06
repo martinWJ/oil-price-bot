@@ -163,68 +163,60 @@ def get_oil_price_trend():
         # 使用字典來儲存按日期分類的油價，方便整理
         dated_oil_prices = {}
 
+        # 遍歷 pieSeries 中的每一個數據點
         for entry in price_data:
-            # 檢查 entry 是否是字典且包含 'name' (日期) 和 'data' 列表
-            if isinstance(entry, dict) and 'name' in entry and 'data' in entry:
+            # 檢查 entry 是否是字典且包含 'name' (日期) 和 'data' 列表且 data 列表不為空
+            if isinstance(entry, dict) and 'name' in entry and 'data' in entry and entry['data']:
                 roc_date = entry['name']
-                # 遍歷該日期下的油品數據
-                for oil_data_point in entry['data']:
-                    # 檢查 oil_data_point 是否是字典且包含 'name' (油品名稱) 和 'y' (價格)
-                    if isinstance(oil_data_point, dict) and 'name' in oil_data_point and 'y' in oil_data_point:
-                        oil_name = oil_data_point['name']
-                        price = oil_data_point['y']
+                # 提取該數據點中的油品數據 (假設 data 列表只包含一個元素)
+                oil_data_point = entry['data'][0]
 
-                        if roc_date not in dated_oil_prices:
-                            dated_oil_prices[roc_date] = {
-                                '92無鉛汽油': None,
-                                '95無鉛汽油': None,
-                                '98無鉛汽油': None,
-                                '超級/高級柴油': None # Use the exact label from the data
-                            }
-                        # 將提取到的價格存儲到對應的日期和油品下
-                        # Convert price to float, handle potential errors later if needed
-                        try:
-                            dated_oil_prices[roc_date][oil_name] = float(price)
-                        except (ValueError, TypeError):
-                            logger.warning(f"無法將價格轉換為浮點數: {price} for {oil_name} on {roc_date}")
-                            dated_oil_prices[roc_date][oil_name] = None # Store as None if conversion fails
+                # 檢查 oil_data_point 是否是字典且包含 'name' (油品名稱) 和 'y' (價格)
+                if isinstance(oil_data_point, dict) and 'name' in oil_data_point and 'y' in oil_data_point:
+                    oil_name = oil_data_point['name']
+                    price = oil_data_point['y']
 
+                    # 如果該日期還未在字典中，則初始化該日期的油價為 None
+                    if roc_date not in dated_oil_prices:
+                        dated_oil_prices[roc_date] = {
+                            '92無鉛汽油': None,
+                            '95無鉛汽油': None,
+                            '98無鉛汽油': None,
+                            '超級/高級柴油': None # 使用數據中的精確標籤
+                        }
+
+                    # 將提取到的價格存儲到對應的日期和油品下
+                    # 轉換價格為浮點數，並處理潛在的轉換錯誤
+                    try:
+                        dated_oil_prices[roc_date][oil_name] = float(price)
+                    except (ValueError, TypeError):
+                        logger.warning(f"無法將價格轉換為浮點數: {price} for {oil_name} on {roc_date}")
+                        # 轉換失敗則將價格設為 None
+                        dated_oil_prices[roc_date][oil_name] = None
 
         # 按照日期排序並整理數據
-        # 過濾掉日期或價格為 None 的日期，並確保所有油品價格都存在
-        sorted_dates_roc = sorted([date for date, prices in dated_oil_prices.items() if
-                                  date is not None and
-                                  prices.get('92無鉛汽油') is not None and
-                                  prices.get('95無鉛汽油') is not None and
-                                  prices.get('98無鉛汽油') is not None and
-                                  prices.get('超級/高級柴油') is not None])
+        # 過濾掉數據不完整的日期點 (任一油品價格為 None 或日期為 None)
+        sorted_and_filtered_dates_roc = sorted([date for date, prices in dated_oil_prices.items() if
+                                               date is not None and
+                                               prices.get('92無鉛汽油') is not None and
+                                               prices.get('95無鉛汽油') is not None and
+                                               prices.get('98無鉛汽油') is not None and
+                                               prices.get('超級/高級柴油') is not None])
 
+        # 如果過濾後沒有任何有效的日期數據，則返回 None
+        if not sorted_and_filtered_dates_roc:
+            logger.error("經過數據整理和過濾後，沒有有效的油價數據可供繪製圖表")
+            return None
 
-        dates_roc = []
-        prices_92 = []
-        prices_95 = []
-        prices_98 = []
-        prices_diesel = []
+        # 根據過濾後的日期列表，重新填充繪圖所需的價格列表
+        dates_roc = sorted_and_filtered_dates_roc
+        prices_92 = [dated_oil_prices[date]['92無鉛汽油'] for date in dates_roc]
+        prices_95 = [dated_oil_prices[date]['95無鉛汽油'] for date in dates_roc]
+        prices_98 = [dated_oil_prices[date]['98無鉛汽油'] for date in dates_roc]
+        prices_diesel = [dated_oil_prices[date]['超級/高級柴油'] for date in dates_roc]
 
-        for roc_date in sorted_dates_roc:
-            dates_roc.append(roc_date)
-            prices = dated_oil_prices[roc_date]
-            prices_92.append(prices['92無鉛汽油'])
-            prices_95.append(prices['95無鉛汽油'])
-            prices_98.append(prices['98無鉛汽油'])
-            prices_diesel.append(prices['超級/高級柴油'])
-
-
-        # 將民國日期轉換為西元日期
+        # 將民國日期轉換為西元日期用於圖表標籤
         date_labels_ad = [tw_date_to_ad_date(d) for d in dates_roc]
-
-
-        if not date_labels_ad:
-             logger.error("沒有有效的油價數據可供繪製圖表")
-             return None
-
-        # 分解有效數據 (實際上已經在上面過濾和整理過了，這裡只是為了命名清晰)
-        # date_labels_ad, prices_92, prices_95, prices_98, prices_diesel = date_labels_ad, prices_92, prices_95, prices_98, prices_diesel
 
 
         plt.figure(figsize=(12, 7)) # Adjust figure size for better readability
