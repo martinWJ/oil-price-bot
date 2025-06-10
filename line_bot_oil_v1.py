@@ -164,6 +164,14 @@ def get_oil_price_trend():
         # 使用字典來儲存按日期分類的油價，方便整理
         dated_oil_prices = {}
 
+        # 定義油品名稱的映射關係，將原始數據中的名稱標準化
+        oil_name_mapping = {
+            "92 無鉛汽油": "92無鉛汽油",
+            "95 無鉛汽油": "95無鉛汽油",
+            "98 無鉛汽油": "98無鉛汽油",
+            "超級/高級柴油": "超級/高級柴油" # 這個名稱已經是標準的了
+        }
+
         # 遍歷 pieSeries 中的每一個數據點
         for entry in price_data:
             # 檢查 entry 是否是字典且包含 'name' (日期) 和 'data' 列表且 data 列表不為空
@@ -174,51 +182,68 @@ def get_oil_price_trend():
 
                 # 檢查 oil_data_point 是否是字典且包含 'name' (油品名稱) 和 'y' (價格)
                 if isinstance(oil_data_point, dict) and 'name' in oil_data_point and 'y' in oil_data_point:
-                    oil_name = oil_data_point['name']
+                    raw_oil_name = oil_data_point['name']
                     price = oil_data_point['y']
 
-                    # 如果該日期還未在字典中，則初始化該日期的油價為 None
-                    if roc_date not in dated_oil_prices:
-                        dated_oil_prices[roc_date] = {
-                            '92無鉛汽油': None,
-                            '95無鉛汽油': None,
-                            '98無鉛汽油': None,
-                            '超級/高級柴油': None # 使用數據中的精確標籤
-                        }
+                    # 獲取標準化的油品名稱
+                    standardized_oil_name = oil_name_mapping.get(raw_oil_name)
 
-                    # 將提取到的價格存儲到對應的日期和油品下
-                    # 轉換價格為浮點數，並處理潛在的轉換錯誤
-                    try:
-                        dated_oil_prices[roc_date][oil_name] = float(price)
-                    except (ValueError, TypeError):
-                        logger.warning(f"無法將價格轉換為浮點數: {price} for {oil_name} on {roc_date}")
-                        # 轉換失敗則將價格設為 None
-                        dated_oil_prices[roc_date][oil_name] = None
+                    # 如果原始油品名稱在映射中，才進行處理
+                    if standardized_oil_name:
+                        if roc_date not in dated_oil_prices:
+                            dated_oil_prices[roc_date] = {} # Initialize with an empty dict for the date
 
-                logger.info(f"提取到的單個油品數據點: 日期={roc_date}, 油品名稱={oil_name}, 價格={price}") # Added for debugging
+                        # 將提取到的價格存儲到對應的日期和標準化油品名稱下
+                        # 轉換價格為浮點數，並處理潛在的轉換錯誤
+                        try:
+                            dated_oil_prices[roc_date][standardized_oil_name] = float(price)
+                        except (ValueError, TypeError):
+                            logger.warning(f"無法將價格轉換為浮點數: {price} for {raw_oil_name} on {roc_date}")
+                            # 轉換失敗則將價格設為 None
+                            dated_oil_prices[roc_date][standardized_oil_name] = None
+        
+        # 按照日期排序
+        sorted_dates_roc = sorted(dated_oil_prices.keys())
 
-        # 按照日期排序並整理數據
-        # 過濾掉數據不完整的日期點 (任一油品價格為 None 或日期為 None)
-        sorted_and_filtered_dates_roc = sorted([date for date, prices in dated_oil_prices.items() if
-                                               date is not None and (
-                                                   prices.get('92無鉛汽油') is not None or
-                                                   prices.get('95無鉛汽油') is not None or
-                                                   prices.get('98無鉛汽油') is not None or
-                                                   prices.get('超級/高級柴油') is not None
-                                               )
-                                               ])
-
-        # 如果過濾後沒有任何有效的日期數據，則返回 None
-        if not sorted_and_filtered_dates_roc:
-            logger.error("經過數據整理和過濾後，沒有有效的油價數據可供繪製圖表")
+        # If after parsing and sorting, there are no dates, return None
+        if not sorted_dates_roc:
+            logger.error("經過數據解析和排序後，沒有有效的日期數據")
             return None
 
-        # 根據過濾後的日期列表，重新填充繪圖所需的價格列表
-        dates_roc = sorted_and_filtered_dates_roc
-        prices_92 = [dated_oil_prices[date]['92無鉛汽油'] for date in dates_roc]
-        prices_95 = [dated_oil_prices[date]['95無鉛汽油'] for date in dates_roc]
-        prices_98 = [dated_oil_prices[date]['98無鉛汽油'] for date in dates_roc]
-        prices_diesel = [dated_oil_prices[date]['超級/高級柴油'] for date in dates_roc]
+        # Prepare final lists for plotting, ensuring all oil types have a value (or None) for each date
+        dates_roc = []
+        prices_92 = []
+        prices_95 = []
+        prices_98 = []
+        prices_diesel = []
+
+        # Define all expected standardized oil names
+        all_oil_types = ['92無鉛汽油', '95無鉛汽油', '98無鉛汽油', '超級/高級柴油'] # Keep this for reference if needed
+
+        for roc_date in sorted_dates_roc:
+            dates_roc.append(roc_date)
+            current_day_prices = dated_oil_prices.get(roc_date, {}) # Get prices for this date, default to empty dict
+
+            prices_92.append(current_day_prices.get('92無鉛汽油', None))
+            prices_95.append(current_day_prices.get('95無鉛汽油', None))
+            prices_98.append(current_day_prices.get('98無鉛汽油', None))
+            prices_diesel.append(current_day_prices.get('超級/高級柴油', None))
+
+        # Now, filter out dates where NO oil price is available, even after aggregation.
+        # This will prevent plotting empty date points.
+        valid_indices = [i for i, date in enumerate(dates_roc) if any(
+            [prices_92[i] is not None, prices_95[i] is not None, prices_98[i] is not None, prices_diesel[i] is not None]
+        )]
+
+        if not valid_indices:
+            logger.error("經過數據整理和過濾後，沒有任何油品數據可供繪製圖表")
+            return None
+
+        dates_roc = [dates_roc[i] for i in valid_indices]
+        prices_92 = [prices_92[i] for i in valid_indices]
+        prices_95 = [prices_95[i] for i in valid_indices]
+        prices_98 = [prices_98[i] for i in valid_indices]
+        prices_diesel = [prices_diesel[i] for i in valid_indices]
 
         logger.info(f"整理後的 dated_oil_prices: {dated_oil_prices}") # Added for debugging
         logger.info(f"最終用於繪圖的 prices_92: {prices_92}") # Added for debugging
