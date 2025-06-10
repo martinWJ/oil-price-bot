@@ -141,6 +141,7 @@ def get_oil_price_trend():
 
         price_data_str = match.group(1)
         logger.info(f"找到的資料字串 (pieSeries): {price_data_str[:100]}...")
+        logger.info(f"完整 pieSeries 資料字串: {price_data_str}") # Added for debugging
 
         try:
             # 將單引號替換為雙引號，並處理 JavaScript 的 undefined
@@ -194,6 +195,8 @@ def get_oil_price_trend():
                         # 轉換失敗則將價格設為 None
                         dated_oil_prices[roc_date][oil_name] = None
 
+                logger.info(f"提取到的單個油品數據點: 日期={roc_date}, 油品名稱={oil_name}, 價格={price}") # Added for debugging
+
         # 按照日期排序並整理數據
         # 過濾掉數據不完整的日期點 (任一油品價格為 None 或日期為 None)
         sorted_and_filtered_dates_roc = sorted([date for date, prices in dated_oil_prices.items() if
@@ -216,6 +219,12 @@ def get_oil_price_trend():
         prices_95 = [dated_oil_prices[date]['95無鉛汽油'] for date in dates_roc]
         prices_98 = [dated_oil_prices[date]['98無鉛汽油'] for date in dates_roc]
         prices_diesel = [dated_oil_prices[date]['超級/高級柴油'] for date in dates_roc]
+
+        logger.info(f"整理後的 dated_oil_prices: {dated_oil_prices}") # Added for debugging
+        logger.info(f"最終用於繪圖的 prices_92: {prices_92}") # Added for debugging
+        logger.info(f"最終用於繪圖的 prices_95: {prices_95}") # Added for debugging
+        logger.info(f"最終用於繪圖的 prices_98: {prices_98}") # Added for debugging
+        logger.info(f"最終用於繪圖的 prices_diesel: {prices_diesel}") # Added for debugging
 
         # 將民國日期轉換為西元日期用於圖表標籤
         date_labels_ad = [tw_date_to_ad_date(d) for d in dates_roc]
