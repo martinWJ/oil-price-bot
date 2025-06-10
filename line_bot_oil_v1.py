@@ -201,7 +201,9 @@ def get_oil_price_trend():
                             logger.warning(f"無法將價格轉換為浮點數: {price} for {raw_oil_name} on {roc_date}")
                             # 轉換失敗則將價格設為 None
                             dated_oil_prices[roc_date][standardized_oil_name] = None
-        
+
+        # logger.info(f"提取到的單個油品數據點: 日期={roc_date}, 油品名稱={oil_name}, 價格={price}") # Removed debugging log
+
         # 按照日期排序
         sorted_dates_roc = sorted(dated_oil_prices.keys())
 
@@ -245,11 +247,11 @@ def get_oil_price_trend():
         prices_98 = [prices_98[i] for i in valid_indices]
         prices_diesel = [prices_diesel[i] for i in valid_indices]
 
-        logger.info(f"整理後的 dated_oil_prices: {dated_oil_prices}") # Added for debugging
-        logger.info(f"最終用於繪圖的 prices_92: {prices_92}") # Added for debugging
-        logger.info(f"最終用於繪圖的 prices_95: {prices_95}") # Added for debugging
-        logger.info(f"最終用於繪圖的 prices_98: {prices_98}") # Added for debugging
-        logger.info(f"最終用於繪圖的 prices_diesel: {prices_diesel}") # Added for debugging
+        # logger.info(f"整理後的 dated_oil_prices: {dated_oil_prices}") # Removed debugging log
+        # logger.info(f"最終用於繪圖的 prices_92: {prices_92}") # Removed debugging log
+        # logger.info(f"最終用於繪圖的 prices_95: {prices_95}") # Removed debugging log
+        # logger.info(f"最終用於繪圖的 prices_98: {prices_98}") # Removed debugging log
+        # logger.info(f"最終用於繪圖的 prices_diesel: {prices_diesel}") # Removed debugging log
 
         # 將民國日期轉換為西元日期用於圖表標籤
         date_labels_ad = [tw_date_to_ad_date(d) for d in dates_roc]
