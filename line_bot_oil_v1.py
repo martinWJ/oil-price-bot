@@ -3,7 +3,7 @@ import logging
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageSendMessage, FlexSendMessage
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
@@ -305,7 +305,7 @@ def get_oil_price_trend():
 def get_weekly_oil_comparison():
     """
     Compares the current week's oil price with the last week's oil price for 95 Unleaded and Super Diesel.
-    Returns a formatted string describing the price changes.
+    Returns a Flex Message containing the price changes with color-coded text.
     """
     try:
         url = 'https://www.cpc.com.tw/historyprice.aspx?n=2890'
@@ -317,33 +317,27 @@ def get_weekly_oil_comparison():
         dated_oil_prices = _parse_historical_oil_data(html)
         if not dated_oil_prices:
             logger.error("沒有有效的歷史油價數據可供週比週比較")
-            return "無法取得油價歷史數據，請稍後再試。"
+            return None
 
         # 按照日期排序，並轉換為西元日期對象以便比較
         sorted_dates_ad_str = sorted([tw_date_to_ad_date(d) for d in dated_oil_prices.keys()], reverse=True)
         sorted_dates_ad_obj = [datetime.strptime(d, '%Y-%m-%d') for d in sorted_dates_ad_str]
 
         # 找到最近的兩個週日（或價格調整日）
-        # 中油價格通常在週日宣布，週一凌晨生效
-        # 我們尋找最近的兩個有效的價格公布日期
         current_week_price_date = None
         last_week_price_date = None
         current_week_date_obj = None
         last_week_date_obj = None
         
-        # 遍歷日期，找到最近的兩個有效的油價數據日期
         for i, date_obj in enumerate(sorted_dates_ad_obj):
-            # 檢查是否有95無鉛或柴油數據
-            roc_date = sorted_dates_ad_str[i].replace('-', '/') # Convert back to ROC format to lookup in dated_oil_prices
-            # Adjust ROC date to YYY/MM/DD for lookup after getting AD date
+            roc_date = sorted_dates_ad_str[i].replace('-', '/')
             roc_date_for_lookup = None
             try:
-                # Convert AD date object back to ROC string for lookup if it's in the original format
                 roc_year = date_obj.year - 1911
                 roc_date_for_lookup = f"{roc_year}/{date_obj.month:02d}/{date_obj.day:02d}"
             except Exception as e:
                 logger.warning(f"無法轉換 {date_obj} 為民國日期格式以進行查詢: {e}")
-                continue # Skip this date if conversion fails
+                continue
 
             if roc_date_for_lookup and roc_date_for_lookup in dated_oil_prices:
                 prices_for_date = dated_oil_prices[roc_date_for_lookup]
@@ -354,51 +348,96 @@ def get_weekly_oil_comparison():
                     elif last_week_price_date is None and date_obj < current_week_date_obj:
                         last_week_price_date = roc_date_for_lookup
                         last_week_date_obj = date_obj
-                        break # Found both dates, exit loop
+                        break
         
         if not current_week_price_date or not last_week_price_date:
             logger.warning("未能找到足夠的歷史油價數據進行週比週比較")
-            return "未能找到足夠的歷史油價數據進行週比週比較。"
+            return None
 
-        # 獲取本週和上週的油價
         current_week_prices = dated_oil_prices.get(current_week_price_date, {})
         last_week_prices = dated_oil_prices.get(last_week_price_date, {})
 
+        # 準備 Flex Message 的內容
+        contents = {
+            "type": "bubble",
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "本週與上週油價比較",
+                        "weight": "bold",
+                        "size": "xl",
+                        "margin": "md"
+                    }
+                ]
+            }
+        }
+
         # 比較 95 無鉛汽油
-        msg_95 = ""
         price_95_current = current_week_prices.get('95無鉛汽油')
         price_95_last = last_week_prices.get('95無鉛汽油')
 
         if price_95_current is not None and price_95_last is not None:
             diff_95 = price_95_current - price_95_last
             status_95 = "漲" if diff_95 > 0 else "跌" if diff_95 < 0 else "持平"
-            msg_95 = f"無鉛汽油本週{status_95}{abs(diff_95):.1f}元/公升\n"
+            color_95 = "#FF0000" if diff_95 > 0 else "#00FF00" if diff_95 < 0 else "#000000"
+            msg_95 = f"無鉛汽油本週{status_95}{abs(diff_95):.1f}元/公升"
+            contents["body"]["contents"].append({
+                "type": "text",
+                "text": msg_95,
+                "color": color_95,
+                "margin": "md"
+            })
         elif price_95_current is not None and price_95_last is None:
-            msg_95 = "無鉛汽油上週數據不完整，無法比較。\n"
+            contents["body"]["contents"].append({
+                "type": "text",
+                "text": "無鉛汽油上週數據不完整，無法比較。",
+                "margin": "md"
+            })
         elif price_95_current is None:
-            msg_95 = "無鉛汽油本週數據不完整，無法比較。\n"
+            contents["body"]["contents"].append({
+                "type": "text",
+                "text": "無鉛汽油本週數據不完整，無法比較。",
+                "margin": "md"
+            })
 
         # 比較超級柴油
-        msg_diesel = ""
         price_diesel_current = current_week_prices.get('超級/高級柴油')
         price_diesel_last = last_week_prices.get('超級/高級柴油')
 
         if price_diesel_current is not None and price_diesel_last is not None:
             diff_diesel = price_diesel_current - price_diesel_last
             status_diesel = "漲" if diff_diesel > 0 else "跌" if diff_diesel < 0 else "持平"
-            msg_diesel = f"超級柴油本週{status_diesel}{abs(diff_diesel):.1f}元/公升\n"
+            color_diesel = "#FF0000" if diff_diesel > 0 else "#00FF00" if diff_diesel < 0 else "#000000"
+            msg_diesel = f"超級柴油本週{status_diesel}{abs(diff_diesel):.1f}元/公升"
+            contents["body"]["contents"].append({
+                "type": "text",
+                "text": msg_diesel,
+                "color": color_diesel,
+                "margin": "md"
+            })
         elif price_diesel_current is not None and price_diesel_last is None:
-            msg_diesel = "超級柴油上週數據不完整，無法比較。\n"
+            contents["body"]["contents"].append({
+                "type": "text",
+                "text": "超級柴油上週數據不完整，無法比較。",
+                "margin": "md"
+            })
         elif price_diesel_current is None:
-            msg_diesel = "超級柴油本週數據不完整，無法比較。\n"
+            contents["body"]["contents"].append({
+                "type": "text",
+                "text": "超級柴油本週數據不完整，無法比較。",
+                "margin": "md"
+            })
 
-        return f"本週與上週油價比較：\n{msg_95}{msg_diesel}"
+        return contents
 
     except Exception as e:
         logger.error(f"生成週比週油價比較時發生錯誤: {str(e)}")
         import traceback
-        logger.error(traceback.format_exc()) # Log full traceback
-        return "查詢週比週油價比較時發生錯誤，請稍後再試。"
+        logger.error(traceback.format_exc())
+        return None
 
 @app.route("/webhook", methods=['POST'])
 def callback():
@@ -534,19 +573,20 @@ def handle_message(event):
             price_info = get_current_oil_price()
             weekly_comparison_info = get_weekly_oil_comparison()
             
-            combined_message = ""
+            messages = []
             if price_info:
-                combined_message += price_info
+                messages.append(TextSendMessage(text=price_info))
             
             if weekly_comparison_info:
-                if combined_message: # Add a newline if there's already content
-                    combined_message += "\n"
-                combined_message += weekly_comparison_info
+                messages.append(FlexSendMessage(
+                    alt_text="本週與上週油價比較",
+                    contents=weekly_comparison_info
+                ))
 
-            if combined_message:
+            if messages:
                 line_bot_api.reply_message(
                     event.reply_token,
-                    TextSendMessage(text=combined_message)
+                    messages
                 )
             else:
                 line_bot_api.reply_message(
