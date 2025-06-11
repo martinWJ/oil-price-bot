@@ -583,7 +583,7 @@ def handle_message(event):
                 current_price_elements = []
                 current_price_elements.append({
                     "type": "text",
-                    "text": f"本周{current_price_data["date_range"]}中油最新油價資訊:",
+                    "text": f"本周{current_price_data['date_range']}中油最新油價資訊:",
                     "weight": "bold",
                     "size": "sm",
                     "margin": "md"
@@ -591,7 +591,7 @@ def handle_message(event):
                 for oil_data in current_price_data["oil_prices"]:
                     current_price_elements.append({
                         "type": "text",
-                        "text": f"{oil_data["name"]}: {oil_data["price"]} 元/公升",
+                        "text": f"{oil_data['name']}: {oil_data['price']} 元/公升",
                         "size": "sm",
                         "margin": "sm"
                     })
@@ -624,9 +624,9 @@ def handle_message(event):
                 )
             elif current_price_data:
                 # If only current price data is available, send as TextSendMessage
-                combined_price_text = f"本周{current_price_data["date_range"]}中油最新油價資訊:\n"
+                combined_price_text = f"本周{current_price_data['date_range']}中油最新油價資訊:\n"
                 for oil_data in current_price_data["oil_prices"]:
-                    combined_price_text += f"{oil_data["name"]}: {oil_data["price"]} 元/公升\n"
+                    combined_price_text += f"{oil_data['name']}: {oil_data['price']} 元/公升\n"
                 line_bot_api.reply_message(
                     event.reply_token,
                     TextSendMessage(text=combined_price_text)
