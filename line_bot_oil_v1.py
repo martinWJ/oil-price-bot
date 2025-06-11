@@ -16,6 +16,7 @@ from imagekitio import ImageKit
 import matplotlib
 import base64
 import tempfile
+from apscheduler.schedulers.background import BackgroundScheduler
 matplotlib.use('Agg')  # 使用 Agg 後端
 
 # 設定 logging
@@ -57,6 +58,56 @@ imagekit = ImageKit(
     public_key=os.getenv('IMAGEKIT_PUBLIC_KEY'),
     url_endpoint=os.getenv('IMAGEKIT_URL_ENDPOINT')
 )
+
+# 訂閱用戶檔案路徑
+SUBSCRIBERS_FILE = 'subscribed_users.txt'
+
+def load_subscribers():
+    """從檔案載入訂閱用戶 ID 列表。"""
+    try:
+        if os.path.exists(SUBSCRIBERS_FILE):
+            with open(SUBSCRIBERS_FILE, 'r') as f:
+                # 讀取每一行並去除空白字元，如果行不為空則加入集合
+                subscribers = {line.strip() for line in f if line.strip()}
+            logger.info(f"成功載入 {len(subscribers)} 個訂閱用戶 ID。")
+            return subscribers
+        logger.info(f"訂閱用戶檔案 {SUBSCRIBERS_FILE} 不存在，返回空集合。")
+        return set()
+    except Exception as e:
+        logger.error(f"載入訂閱用戶檔案時發生錯誤: {str(e)}")
+        return set()
+
+def save_subscribers(subscribers):
+    """將訂閱用戶 ID 列表儲存到檔案。"""
+    try:
+        with open(SUBSCRIBERS_FILE, 'w') as f:
+            for user_id in sorted(subscribers):
+                f.write(user_id + '\n')
+        logger.info(f"成功儲存 {len(subscribers)} 個訂閱用戶 ID。")
+    except Exception as e:
+        logger.error(f"儲存訂閱用戶檔案時發生錯誤: {str(e)}")
+
+def add_subscriber(user_id):
+    """新增一個訂閱用戶 ID。"""
+    subscribers = load_subscribers()
+    if user_id not in subscribers:
+        subscribers.add(user_id)
+        save_subscribers(subscribers)
+        logger.info(f"用戶 {user_id} 已新增至訂閱列表。")
+        return True
+    logger.info(f"用戶 {user_id} 已存在於訂閱列表中。")
+    return False
+
+def remove_subscriber(user_id):
+    """移除一個訂閱用戶 ID。"""
+    subscribers = load_subscribers()
+    if user_id in subscribers:
+        subscribers.remove(user_id)
+        save_subscribers(subscribers)
+        logger.info(f"用戶 {user_id} 已從訂閱列表中移除。")
+        return True
+    logger.info(f"用戶 {user_id} 不存在於訂閱列表中。")
+    return False
 
 def tw_date_to_ad_date(tw_date_str):
     """Converts a Republic of China (Taiwan) calendar date string (YYY/MM/DD) to a Western calendar date string (YYYY-MM-DD)."""
@@ -444,6 +495,85 @@ def get_weekly_oil_comparison():
         logger.error(traceback.format_exc())
         return None
 
+def send_push_notification():
+    """
+    Fetches the latest oil price information and sends a push notification to all subscribed users.
+    This function is intended to be called by the scheduler.
+    """
+    logger.info("開始執行自動推播任務...")
+    subscribers = load_subscribers()
+
+    if not subscribers:
+        logger.info("沒有訂閱用戶，跳過推播任務。")
+        return
+
+    try:
+        current_price_data = get_current_oil_price()
+        weekly_comparison_info = get_weekly_oil_comparison()
+
+        if not current_price_data and not weekly_comparison_info:
+            logger.error("無法獲取當前油價或週比週比較資訊，無法推播。")
+            return
+
+        # 組合 Flex Message 內容 (與 handle_message 類似的邏輯)
+        flex_message_contents = {
+            "type": "bubble",
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": []
+            }
+        }
+
+        if current_price_data:
+            flex_message_contents["body"]["contents"].append({
+                "type": "text",
+                "text": f"本周{current_price_data['date_range']}中油最新油價資訊:",
+                "weight": "bold",
+                "size": "sm",
+                "margin": "md"
+            })
+            for oil_data in current_price_data["oil_prices"]:
+                flex_message_contents["body"]["contents"].append({
+                    "type": "text",
+                    "text": f"{oil_data['name']}: {oil_data['price']} 元/公升",
+                    "size": "sm",
+                    "margin": "sm"
+                })
+            flex_message_contents["body"]["contents"].append({
+                "type": "separator",
+                "margin": "md"
+            })
+        
+        if weekly_comparison_info:
+            # 因為 weekly_comparison_info 已經是 Flex Message 的 body 部分，我們需要提取其 contents
+            for item in weekly_comparison_info["body"]["contents"]:
+                flex_message_contents["body"]["contents"].append(item)
+
+        # 確保有內容可以推播
+        if not flex_message_contents["body"]["contents"]:
+            logger.warning("生成的推播訊息內容為空，跳過推播。")
+            return
+
+        # 構建 FlexSendMessage
+        flex_message = FlexSendMessage(
+            alt_text="中油油價自動推播",
+            contents=flex_message_contents
+        )
+
+        # 推播訊息給所有訂閱用戶
+        for user_id in subscribers:
+            try:
+                line_bot_api.push_message(user_id, flex_message)
+                logger.info(f"成功向用戶 {user_id} 推播油價資訊。")
+            except Exception as push_error:
+                logger.error(f"向用戶 {user_id} 推播油價資訊時發生錯誤: {str(push_error)}")
+
+    except Exception as e:
+        logger.error(f"執行自動推播任務時發生錯誤: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+
 @app.route("/webhook", methods=['POST'])
 def callback():
     # 取得 X-Line-Signature header 值
@@ -645,11 +775,35 @@ def handle_message(event):
                     event.reply_token,
                     TextSendMessage(text="Sorry, unable to get oil price information. Please try again later.")
                 )
+        elif text == "訂閱油價":
+            user_id = event.source.user_id
+            if add_subscriber(user_id):
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text="您已成功訂閱油價自動推播！週日油價更新後將自動通知您。")
+                )
+            else:
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text="您已經是油價自動推播的訂閱用戶了。")
+                )
+        elif text == "取消訂閱油價":
+            user_id = event.source.user_id
+            if remove_subscriber(user_id):
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text="您已成功取消油價自動推播。")
+                )
+            else:
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text="您尚未訂閱油價自動推播，無需取消。")
+                )
         else:
             logger.info(f"收到未知指令: {text}")
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="Hello! I am an oil price query bot\n\nPlease enter the following commands:\n• 油價：Query current oil price\n• 趨勢：View oil price trend chart")
+                TextSendMessage(text="Hello! I am an oil price query bot\n\nPlease enter the following commands:\n• 油價：Query current oil price\n• 趨勢：View oil price trend chart\n• 訂閱油價：Subscribe to oil price push notifications\n• 取消訂閱油價：Unsubscribe from oil price push notifications")
             )
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
@@ -662,5 +816,18 @@ def handle_message(event):
             logger.error(f"Error sending error message: {str(reply_error)}")
 
 if __name__ == "__main__":
+    # 初始化排程器
+    scheduler = BackgroundScheduler()
+
+    # 設定每週日下午的排程任務
+    # day_of_week=6 代表星期日 (0=星期一, 6=星期日)
+    # hour=14, minute=00 代表下午 2 點
+    scheduler.add_job(send_push_notification, 'cron', day_of_week=6, hour=14, minute=0, timezone='Asia/Taipei')
+    logger.info("已設定自動推播排程任務：每週日下午 2 點推播油價資訊。")
+
+    # 啟動排程器
+    scheduler.start()
+    logger.info("排程器已啟動。")
+
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port) 
