@@ -2,7 +2,7 @@ flask==2.0.1
 werkzeug==2.0.1
 line-bot-sdk==3.17.1
 requests>=2.32.3
-urllib3>=2.0.5
+urllib3==1.26.15
 beautifulsoup4==4.9.3
 matplotlib==3.4.3
 numpy==1.21.2
