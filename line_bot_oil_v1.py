@@ -125,27 +125,27 @@ def get_current_oil_price():
         logger.error(f"抓取當前油價時發生錯誤: {str(e)}")
         return None
 
-def get_oil_price_trend():
+def _parse_historical_oil_data(html_content):
+    """
+    Parses the historical oil price data from the given HTML content.
+    Extracts the 'pieSeries' JavaScript variable, parses it, and organizes the data
+    into a dictionary where keys are ROC dates and values are dictionaries
+    containing oil prices for various types.
+    """
     try:
-        url = 'https://www.cpc.com.tw/historyprice.aspx?n=2890'
-        logger.info(f"開始抓取油價趨勢資料，URL: {url}")
-        response = requests.get(url)
-        response.raise_for_status()
-        html = response.text
-
         # 精確匹配 var pieSeries = [...]
-        match = re.search(r'var\s+pieSeries\s*=\s*(\[.*?\]);', html, re.DOTALL)
+        match = re.search(r'var\s+pieSeries\s*=\s*(\[.*?\]);', html_content, re.DOTALL)
         if not match:
             logger.error("找不到 pieSeries 油價資料")
             return None
 
         price_data_str = match.group(1)
-        logger.info(f"找到的資料字串 (pieSeries): {price_data_str[:100]}...")
-        logger.info(f"完整 pieSeries 資料字串: {price_data_str}") # Added for debugging
+        # logger.info(f"找到的資料字串 (pieSeries): {price_data_str[:100]}...") # Removed debugging log
+        # logger.info(f"完整 pieSeries 資料字串: {price_data_str}") # Removed debugging log
 
         try:
             # 將單引號替換為雙引號，並處理 JavaScript 的 undefined
-            price_data_str = price_data_str.replace("'", '"').replace("undefined", "null")
+            price_data_str = price_data_str.replace("\'", '"').replace("undefined", "null")
             price_data = json.loads(price_data_str)
         except json.JSONDecodeError as e:
             logger.error(f"解析 pieSeries 油價資料時發生錯誤: {e}")
@@ -155,13 +155,6 @@ def get_oil_price_trend():
             logger.error("pieSeries 油價資料為空")
             return None
 
-        prices_92 = []
-        prices_95 = []
-        prices_98 = []
-        prices_diesel = []
-
-        # 重新組織數據，根據新的 pieSeries 結構提取日期和價格
-        # 使用字典來儲存按日期分類的油價，方便整理
         dated_oil_prices = {}
 
         # 定義油品名稱的映射關係，將原始數據中的名稱標準化
@@ -169,40 +162,46 @@ def get_oil_price_trend():
             "92 無鉛汽油": "92無鉛汽油",
             "95 無鉛汽油": "95無鉛汽油",
             "98 無鉛汽油": "98無鉛汽油",
-            "超級/高級柴油": "超級/高級柴油" # 這個名稱已經是標準的了
+            "超級/高級柴油": "超級/高級柴油"
         }
 
-        # 遍歷 pieSeries 中的每一個數據點
         for entry in price_data:
-            # 檢查 entry 是否是字典且包含 'name' (日期) 和 'data' 列表且 data 列表不為空
             if isinstance(entry, dict) and 'name' in entry and 'data' in entry and entry['data']:
                 roc_date = entry['name']
-                # 提取該數據點中的油品數據 (假設 data 列表只包含一個元素)
                 oil_data_point = entry['data'][0]
 
-                # 檢查 oil_data_point 是否是字典且包含 'name' (油品名稱) 和 'y' (價格)
                 if isinstance(oil_data_point, dict) and 'name' in oil_data_point and 'y' in oil_data_point:
                     raw_oil_name = oil_data_point['name']
                     price = oil_data_point['y']
 
-                    # 獲取標準化的油品名稱
                     standardized_oil_name = oil_name_mapping.get(raw_oil_name)
 
-                    # 如果原始油品名稱在映射中，才進行處理
                     if standardized_oil_name:
                         if roc_date not in dated_oil_prices:
-                            dated_oil_prices[roc_date] = {} # Initialize with an empty dict for the date
+                            dated_oil_prices[roc_date] = {}
 
-                        # 將提取到的價格存儲到對應的日期和標準化油品名稱下
-                        # 轉換價格為浮點數，並處理潛在的轉換錯誤
                         try:
                             dated_oil_prices[roc_date][standardized_oil_name] = float(price)
                         except (ValueError, TypeError):
                             logger.warning(f"無法將價格轉換為浮點數: {price} for {raw_oil_name} on {roc_date}")
-                            # 轉換失敗則將價格設為 None
                             dated_oil_prices[roc_date][standardized_oil_name] = None
+        return dated_oil_prices
+    except Exception as e:
+        logger.error(f"解析歷史油價數據時發生錯誤: {str(e)}")
+        return None
 
-        # logger.info(f"提取到的單個油品數據點: 日期={roc_date}, 油品名稱={oil_name}, 價格={price}") # Removed debugging log
+def get_oil_price_trend():
+    try:
+        url = 'https://www.cpc.com.tw/historyprice.aspx?n=2890'
+        logger.info(f"開始抓取油價趨勢資料，URL: {url}")
+        response = requests.get(url)
+        response.raise_for_status()
+        html = response.text
+
+        dated_oil_prices = _parse_historical_oil_data(html)
+        if not dated_oil_prices:
+            logger.error("沒有有效的油價數據可供繪製圖表")
+            return None
 
         # 按照日期排序
         sorted_dates_roc = sorted(dated_oil_prices.keys())
@@ -220,11 +219,11 @@ def get_oil_price_trend():
         prices_diesel = []
 
         # Define all expected standardized oil names
-        all_oil_types = ['92無鉛汽油', '95無鉛汽油', '98無鉛汽油', '超級/高級柴油'] # Keep this for reference if needed
+        # all_oil_types = ['92無鉛汽油', '95無鉛汽油', '98無鉛汽油', '超級/高級柴油'] # Keep this for reference if needed
 
         for roc_date in sorted_dates_roc:
             dates_roc.append(roc_date)
-            current_day_prices = dated_oil_prices.get(roc_date, {}) # Get prices for this date, default to empty dict
+            current_day_prices = dated_oil_prices.get(roc_date, {})
 
             prices_92.append(current_day_prices.get('92無鉛汽油', None))
             prices_95.append(current_day_prices.get('95無鉛汽油', None))
@@ -302,6 +301,104 @@ def get_oil_price_trend():
         import traceback
         logger.error(traceback.format_exc()) # Log full traceback
         return None
+
+def get_weekly_oil_comparison():
+    """
+    Compares the current week's oil price with the last week's oil price for 95 Unleaded and Super Diesel.
+    Returns a formatted string describing the price changes.
+    """
+    try:
+        url = 'https://www.cpc.com.tw/historyprice.aspx?n=2890'
+        logger.info(f"開始抓取歷史油價數據進行週比週比較，URL: {url}")
+        response = requests.get(url)
+        response.raise_for_status()
+        html = response.text
+
+        dated_oil_prices = _parse_historical_oil_data(html)
+        if not dated_oil_prices:
+            logger.error("沒有有效的歷史油價數據可供週比週比較")
+            return "無法取得油價歷史數據，請稍後再試。"
+
+        # 按照日期排序，並轉換為西元日期對象以便比較
+        sorted_dates_ad_str = sorted([tw_date_to_ad_date(d) for d in dated_oil_prices.keys()], reverse=True)
+        sorted_dates_ad_obj = [datetime.strptime(d, '%Y-%m-%d') for d in sorted_dates_ad_str]
+
+        # 找到最近的兩個週日（或價格調整日）
+        # 中油價格通常在週日宣布，週一凌晨生效
+        # 我們尋找最近的兩個有效的價格公布日期
+        current_week_price_date = None
+        last_week_price_date = None
+        current_week_date_obj = None
+        last_week_date_obj = None
+        
+        # 遍歷日期，找到最近的兩個有效的油價數據日期
+        for i, date_obj in enumerate(sorted_dates_ad_obj):
+            # 檢查是否有95無鉛或柴油數據
+            roc_date = sorted_dates_ad_str[i].replace('-', '/') # Convert back to ROC format to lookup in dated_oil_prices
+            # Adjust ROC date to YYY/MM/DD for lookup after getting AD date
+            roc_date_for_lookup = None
+            try:
+                # Convert AD date object back to ROC string for lookup if it's in the original format
+                roc_year = date_obj.year - 1911
+                roc_date_for_lookup = f"{roc_year}/{date_obj.month:02d}/{date_obj.day:02d}"
+            except Exception as e:
+                logger.warning(f"無法轉換 {date_obj} 為民國日期格式以進行查詢: {e}")
+                continue # Skip this date if conversion fails
+
+            if roc_date_for_lookup and roc_date_for_lookup in dated_oil_prices:
+                prices_for_date = dated_oil_prices[roc_date_for_lookup]
+                if prices_for_date.get('95無鉛汽油') is not None or prices_for_date.get('超級/高級柴油') is not None:
+                    if current_week_price_date is None:
+                        current_week_price_date = roc_date_for_lookup
+                        current_week_date_obj = date_obj
+                    elif last_week_price_date is None and date_obj < current_week_date_obj:
+                        last_week_price_date = roc_date_for_lookup
+                        last_week_date_obj = date_obj
+                        break # Found both dates, exit loop
+        
+        if not current_week_price_date or not last_week_price_date:
+            logger.warning("未能找到足夠的歷史油價數據進行週比週比較")
+            return "未能找到足夠的歷史油價數據進行週比週比較。"
+
+        # 獲取本週和上週的油價
+        current_week_prices = dated_oil_prices.get(current_week_price_date, {})
+        last_week_prices = dated_oil_prices.get(last_week_price_date, {})
+
+        # 比較 95 無鉛汽油
+        msg_95 = ""
+        price_95_current = current_week_prices.get('95無鉛汽油')
+        price_95_last = last_week_prices.get('95無鉛汽油')
+
+        if price_95_current is not None and price_95_last is not None:
+            diff_95 = price_95_current - price_95_last
+            status_95 = "漲" if diff_95 > 0 else "跌" if diff_95 < 0 else "持平"
+            msg_95 = f"無鉛汽油本週{status_95}{abs(diff_95):.1f}元/公升\n"
+        elif price_95_current is not None and price_95_last is None:
+            msg_95 = "無鉛汽油上週數據不完整，無法比較。\n"
+        elif price_95_current is None:
+            msg_95 = "無鉛汽油本週數據不完整，無法比較。\n"
+
+        # 比較超級柴油
+        msg_diesel = ""
+        price_diesel_current = current_week_prices.get('超級/高級柴油')
+        price_diesel_last = last_week_prices.get('超級/高級柴油')
+
+        if price_diesel_current is not None and price_diesel_last is not None:
+            diff_diesel = price_diesel_current - price_diesel_last
+            status_diesel = "漲" if diff_diesel > 0 else "跌" if diff_diesel < 0 else "持平"
+            msg_diesel = f"超級柴油本週{status_diesel}{abs(diff_diesel):.1f}元/公升\n"
+        elif price_diesel_current is not None and price_diesel_last is None:
+            msg_diesel = "超級柴油上週數據不完整，無法比較。\n"
+        elif price_diesel_current is None:
+            msg_diesel = "超級柴油本週數據不完整，無法比較。\n"
+
+        return f"本週與上週油價比較：\n{msg_95}{msg_diesel}"
+
+    except Exception as e:
+        logger.error(f"生成週比週油價比較時發生錯誤: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc()) # Log full traceback
+        return "查詢週比週油價比較時發生錯誤，請稍後再試。"
 
 @app.route("/webhook", methods=['POST'])
 def callback():
@@ -435,15 +532,26 @@ def handle_message(event):
         elif text == "油價":
             logger.info("收到油價指令")
             price_info = get_current_oil_price()
+            weekly_comparison_info = get_weekly_oil_comparison()
+            
+            combined_message = ""
             if price_info:
+                combined_message += price_info
+            
+            if weekly_comparison_info:
+                if combined_message: # Add a newline if there's already content
+                    combined_message += "\n"
+                combined_message += weekly_comparison_info
+
+            if combined_message:
                 line_bot_api.reply_message(
                     event.reply_token,
-                    TextSendMessage(text=price_info)
+                    TextSendMessage(text=combined_message)
                 )
             else:
                 line_bot_api.reply_message(
                     event.reply_token,
-                    TextSendMessage(text="Sorry, unable to get current oil price. Please try again later.")
+                    TextSendMessage(text="Sorry, unable to get oil price information. Please try again later.")
                 )
         else:
             logger.info(f"收到未知指令: {text}")
