@@ -368,7 +368,7 @@ def get_weekly_oil_comparison():
                         "type": "text",
                         "text": "本週與上週油價比較",
                         "weight": "bold",
-                        "size": "xl",
+                        "size": "sm",
                         "margin": "md"
                     }
                 ]
@@ -388,18 +388,21 @@ def get_weekly_oil_comparison():
                 "type": "text",
                 "text": msg_95,
                 "color": color_95,
+                "size": "sm",
                 "margin": "md"
             })
         elif price_95_current is not None and price_95_last is None:
             contents["body"]["contents"].append({
                 "type": "text",
                 "text": "無鉛汽油上週數據不完整，無法比較。",
+                "size": "sm",
                 "margin": "md"
             })
         elif price_95_current is None:
             contents["body"]["contents"].append({
                 "type": "text",
                 "text": "無鉛汽油本週數據不完整，無法比較。",
+                "size": "sm",
                 "margin": "md"
             })
 
@@ -416,18 +419,21 @@ def get_weekly_oil_comparison():
                 "type": "text",
                 "text": msg_diesel,
                 "color": color_diesel,
+                "size": "sm",
                 "margin": "md"
             })
         elif price_diesel_current is not None and price_diesel_last is None:
             contents["body"]["contents"].append({
                 "type": "text",
                 "text": "超級柴油上週數據不完整，無法比較。",
+                "size": "sm",
                 "margin": "md"
             })
         elif price_diesel_current is None:
             contents["body"]["contents"].append({
                 "type": "text",
                 "text": "超級柴油本週數據不完整，無法比較。",
+                "size": "sm",
                 "margin": "md"
             })
 
@@ -579,7 +585,13 @@ def handle_message(event):
                     "type": "text",
                     "text": price_info,
                     "weight": "bold",
-                    "size": "md",
+                    "size": "sm",
+                    "margin": "md"
+                })
+                
+                # 在當前油價和週比週比較之間加入分隔線
+                weekly_comparison_info["body"]["contents"].insert(1, {
+                    "type": "separator",
                     "margin": "md"
                 })
                 
