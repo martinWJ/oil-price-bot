@@ -573,20 +573,35 @@ def handle_message(event):
             price_info = get_current_oil_price()
             weekly_comparison_info = get_weekly_oil_comparison()
             
-            messages = []
-            if price_info:
-                messages.append(TextSendMessage(text=price_info))
-            
-            if weekly_comparison_info:
-                messages.append(FlexSendMessage(
-                    alt_text="本週與上週油價比較",
-                    contents=weekly_comparison_info
-                ))
-
-            if messages:
+            if price_info and weekly_comparison_info:
+                # 將當前油價資訊加入到 Flex Message 的內容中
+                weekly_comparison_info["body"]["contents"].insert(0, {
+                    "type": "text",
+                    "text": price_info,
+                    "weight": "bold",
+                    "size": "md",
+                    "margin": "md"
+                })
+                
                 line_bot_api.reply_message(
                     event.reply_token,
-                    messages
+                    FlexSendMessage(
+                        alt_text="油價資訊",
+                        contents=weekly_comparison_info
+                    )
+                )
+            elif price_info:
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text=price_info)
+                )
+            elif weekly_comparison_info:
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    FlexSendMessage(
+                        alt_text="本週與上週油價比較",
+                        contents=weekly_comparison_info
+                    )
                 )
             else:
                 line_bot_api.reply_message(
