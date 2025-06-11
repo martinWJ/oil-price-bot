@@ -113,14 +113,13 @@ def get_current_oil_price():
         # 格式化日期
         date_range = f"{start_date.strftime('%m/%d')}~{end_date.strftime('%m/%d')}"
         
-        # 格式化回覆訊息
-        message = f"本周{date_range}中油最新油價資訊:\n"
+        oil_prices = []
         for name, price in matches:
             # 移除「汽油」字樣
             name = name.replace('汽油', '')
-            message += f"{name}: {price} 元/公升\n"
+            oil_prices.append({"name": name, "price": price})
         
-        return message
+        return {"date_range": date_range, "oil_prices": oil_prices}
     except Exception as e:
         logger.error(f"抓取當前油價時發生錯誤: {str(e)}")
         return None
@@ -576,25 +575,46 @@ def handle_message(event):
                 )
         elif text == "油價":
             logger.info("收到油價指令")
-            price_info = get_current_oil_price()
+            current_price_data = get_current_oil_price() # Now returns a dict
             weekly_comparison_info = get_weekly_oil_comparison()
             
-            if price_info and weekly_comparison_info:
-                # 將當前油價資訊加入到 Flex Message 的內容中
-                weekly_comparison_info["body"]["contents"].insert(0, {
+            if current_price_data and weekly_comparison_info:
+                # Prepare current oil price components
+                current_price_elements = []
+                current_price_elements.append({
                     "type": "text",
-                    "text": price_info,
+                    "text": f"本周{current_price_data["date_range"]}中油最新油價資訊:",
                     "weight": "bold",
                     "size": "sm",
                     "margin": "md"
                 })
-                
-                # 在當前油價和週比週比較之間加入分隔線
-                weekly_comparison_info["body"]["contents"].insert(1, {
+                for oil_data in current_price_data["oil_prices"]:
+                    current_price_elements.append({
+                        "type": "text",
+                        "text": f"{oil_data["name"]}: {oil_data["price"]} 元/公升",
+                        "size": "sm",
+                        "margin": "sm"
+                    })
+
+                # 在當前油價資訊後加入分隔線
+                current_price_elements.append({
                     "type": "separator",
                     "margin": "md"
                 })
+
+                # 將當前油價資訊的元素插入到 Flex Message 的內容中
+                # weekly_comparison_info["body"]["contents"] 已經包含 "本週與上週油價比較" 的標題，
+                # 所以我們將 current_price_elements 插入到標題之後。
+                # 但是為了讓整體順序是「當前油價」 -> 「分隔線」 -> 「本週與上週比較標題」 -> 「比較結果」，
+                # 我們需要將現有的內容（從「本週與上週油價比較」標題開始）作為一個整體，
+                # 然後在最前面插入當前油價的元素。
                 
+                # 複製現有的 contents，因為 insert 會改變原列表
+                original_comparison_contents = weekly_comparison_info["body"]["contents"]
+                
+                # 將當前油價元素添加到最前面
+                weekly_comparison_info["body"]["contents"] = current_price_elements + original_comparison_contents
+
                 line_bot_api.reply_message(
                     event.reply_token,
                     FlexSendMessage(
@@ -602,12 +622,17 @@ def handle_message(event):
                         contents=weekly_comparison_info
                     )
                 )
-            elif price_info:
+            elif current_price_data:
+                # If only current price data is available, send as TextSendMessage
+                combined_price_text = f"本周{current_price_data["date_range"]}中油最新油價資訊:\n"
+                for oil_data in current_price_data["oil_prices"]:
+                    combined_price_text += f"{oil_data["name"]}: {oil_data["price"]} 元/公升\n"
                 line_bot_api.reply_message(
                     event.reply_token,
-                    TextSendMessage(text=price_info)
+                    TextSendMessage(text=combined_price_text)
                 )
             elif weekly_comparison_info:
+                # If only weekly comparison is available, send as FlexSendMessage
                 line_bot_api.reply_message(
                     event.reply_token,
                     FlexSendMessage(
