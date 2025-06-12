@@ -799,11 +799,19 @@ def handle_message(event):
                     event.reply_token,
                     TextSendMessage(text="您尚未訂閱油價自動推播，無需取消。")
                 )
+        elif text == "測試推播":
+            logger.info("收到測試推播指令")
+            # 直接呼叫推播函數，不等待排程
+            send_push_notification()
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="已嘗試發送油價推播通知，請檢查您是否已訂閱。")
+            )
         else:
             logger.info(f"收到未知指令: {text}")
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="Hello! I am an oil price query bot\n\nPlease enter the following commands:\n• 油價：Query current oil price\n• 趨勢：View oil price trend chart\n• 訂閱油價：Subscribe to oil price push notifications\n• 取消訂閱油價：Unsubscribe from oil price push notifications")
+                TextSendMessage(text="Hello! I am an oil price query bot\n\nPlease enter the following commands:\n• 油價：Query current oil price\n• 趨勢：View oil price trend chart\n• 訂閱油價：Subscribe to oil price push notifications\n• 取消訂閱油價：Unsubscribe from oil price push notifications\n• 測試推播：Test oil price push notification")
             )
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
