@@ -25,7 +25,9 @@ scheduler = BackgroundScheduler(timezone='Asia/Singapore')
 scheduler.add_job(send_push_notification, 'interval', minutes=1)
 # 正式用：每週日中午12點執行
 # scheduler.add_job(send_push_notification, 'cron', day_of_week='sun', hour=12, minute=0)
+logger.info("排程器設定完成，準備啟動...")
 scheduler.start()
+logger.info("排程器已啟動！")
 
 @app.route("/callback", methods=['POST'])
 def callback():
