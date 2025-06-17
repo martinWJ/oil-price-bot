@@ -21,7 +21,10 @@ handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
 
 # 設定排程器
 scheduler = BackgroundScheduler(timezone='Asia/Singapore')
-scheduler.add_job(send_push_notification, 'cron', day_of_week='sun', hour=12, minute=0)
+# 測試用：每分鐘執行一次
+scheduler.add_job(send_push_notification, 'interval', minutes=1)
+# 正式用：每週日中午12點執行
+# scheduler.add_job(send_push_notification, 'cron', day_of_week='sun', hour=12, minute=0)
 scheduler.start()
 
 @app.route("/callback", methods=['POST'])
