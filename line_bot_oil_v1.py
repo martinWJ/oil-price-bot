@@ -347,11 +347,7 @@ def get_oil_price_trend():
         # 上傳圖片到 ImageKit
         upload_response = imagekit.upload_file(
             file=buffer.getvalue(),
-            file_name="oil_price_trend.png",
-            options={
-                "response_fields": ["url"],
-                "use_unique_file_name": True
-            }
+            file_name="oil_price_trend.png"
         )
         logger.info("Oil price trend chart uploaded to ImageKit")
         return upload_response.url
