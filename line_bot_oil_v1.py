@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')
 import os
 import logging
 from flask import Flask, request, abort
@@ -13,18 +15,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 from io import BytesIO
 from imagekitio import ImageKit
-import matplotlib
 import base64
 import tempfile
 from apscheduler.schedulers.background import BackgroundScheduler
-matplotlib.use('Agg')  # 使用 Agg 後端
 
 # 設定 logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # 設定字體
-plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
+plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False
 
 # 初始化 Flask 應用程式
@@ -254,126 +254,36 @@ def get_oil_price_trend():
             return None
 
         logger.info(f"成功解析歷史油價數據，共有 {len(dated_oil_prices)} 個日期")
-
-        # 按照日期排序
         sorted_dates_roc = sorted(dated_oil_prices.keys())
         logger.info(f"排序後的日期: {sorted_dates_roc}")
 
-        # If after parsing and sorting, there are no dates, return None
-        if not sorted_dates_roc:
-            logger.error("經過數據解析和排序後，沒有有效的日期數據")
-            return None
-
-        # Prepare final lists for plotting, ensuring all oil types have a value (or None) for each date
         dates_roc = []
-        prices_92 = []
         prices_95 = []
-        prices_98 = []
-        prices_diesel = []
-
-        # Define all expected standardized oil names
-        # all_oil_types = ['92無鉛汽油', '95無鉛汽油', '98無鉛汽油', '超級/高級柴油'] # Keep this for reference if needed
-
         for roc_date in sorted_dates_roc:
             dates_roc.append(roc_date)
             current_day_prices = dated_oil_prices.get(roc_date, {})
-
-            prices_92.append(current_day_prices.get('92無鉛汽油', None))
             prices_95.append(current_day_prices.get('95無鉛汽油', None))
-            prices_98.append(current_day_prices.get('98無鉛汽油', None))
-            prices_diesel.append(current_day_prices.get('超級/高級柴油', None))
-
-        logger.info(f"92無鉛汽油價格: {prices_92}")
         logger.info(f"95無鉛汽油價格: {prices_95}")
-        logger.info(f"98無鉛汽油價格: {prices_98}")
-        logger.info(f"超級柴油價格: {prices_diesel}")
 
-        # Now, filter out dates where NO oil price is available, even after aggregation.
-        # This will prevent plotting empty date points.
-        valid_indices = [i for i, date in enumerate(dates_roc) if any(
-            [prices_92[i] is not None, prices_95[i] is not None, prices_98[i] is not None, prices_diesel[i] is not None]
-        )]
-
-        if not valid_indices:
-            logger.error("經過數據整理和過濾後，沒有任何油品數據可供繪製圖表")
-            return None
-
-        dates_roc = [dates_roc[i] for i in valid_indices]
-        prices_92 = [prices_92[i] for i in valid_indices]
-        prices_95 = [prices_95[i] for i in valid_indices]
-        prices_98 = [prices_98[i] for i in valid_indices]
-        prices_diesel = [prices_diesel[i] for i in valid_indices]
-
-        logger.info(f"過濾後的有效日期: {dates_roc}")
-        logger.info(f"過濾後的92無鉛汽油價格: {prices_92}")
-        logger.info(f"過濾後的95無鉛汽油價格: {prices_95}")
-        logger.info(f"過濾後的98無鉛汽油價格: {prices_98}")
-        logger.info(f"過濾後的超級柴油價格: {prices_diesel}")
-
-        # 將民國日期轉換為西元日期用於圖表標籤
         date_labels_ad = [tw_date_to_ad_date(d) for d in dates_roc]
         logger.info(f"轉換後的西元日期標籤: {date_labels_ad}")
 
-        plt.figure(figsize=(12, 7)) # Adjust figure size for better readability
-        # 使用索引作為 X 軸數據，並在 xticks 中設置日期標籤
+        plt.figure(figsize=(8, 4))
         x_indices = range(len(date_labels_ad))
-        
-        # 只繪製有數據的線條
-        if any(p is not None for p in prices_95):
-            plt.plot(x_indices, prices_95, marker='o', label='95 Unleaded', linewidth=2, markersize=6)
-        if any(p is not None for p in prices_92):
-            plt.plot(x_indices, prices_92, marker='s', label='92 Unleaded', linewidth=2, markersize=6)
-        if any(p is not None for p in prices_98):
-            plt.plot(x_indices, prices_98, marker='^', label='98 Unleaded', linewidth=2, markersize=6)
-        if any(p is not None for p in prices_diesel):
-            plt.plot(x_indices, prices_diesel, marker='d', label='Super Diesel', linewidth=2, markersize=6)
-
-        # 在每個點上添加價格標籤，使用索引作為 X 軸位置
-        for i in x_indices:
-            # 檢查價格是否為 None，如果不是則添加標籤
-            if prices_92[i] is not None:
-                plt.text(i, prices_92[i], f"{prices_92[i]:.1f}", ha='center', va='bottom', fontsize=10)
-            if prices_95[i] is not None:
-                plt.text(i, prices_95[i], f"{prices_95[i]:.1f}", ha='center', va='bottom', fontsize=10)
-            if prices_98[i] is not None:
-                plt.text(i, prices_98[i], f"{prices_98[i]:.1f}", ha='center', va='bottom', fontsize=10)
-            if prices_diesel[i] is not None:
-                plt.text(i, prices_diesel[i], f"{prices_diesel[i]:.1f}", ha='center', va='bottom', fontsize=10)
-
-        plt.xlabel('Date', fontsize=12)
-        plt.ylabel('Price (NTD/L)', fontsize=12)
-        plt.title('CPC Oil Price Trend (Last 7 Weeks)', fontsize=14, fontweight='bold')
-
-        # 設置 X 軸刻度位置和標籤
-        # 顯示所有日期標籤
+        plt.plot(x_indices, prices_95, marker='o')
         plt.xticks(x_indices, date_labels_ad, rotation=45, ha='right', fontsize=10)
-
-        plt.legend(fontsize=10)
-        plt.grid(True, alpha=0.3)
         plt.tight_layout()
-
-        # 計算所有價格的最小與最大值
-        all_prices = []
-        for arr in [prices_92, prices_95, prices_98, prices_diesel]:
-            all_prices += [p for p in arr if p is not None]
-        if all_prices:
-            y_min = min(all_prices) - 1
-            y_max = max(all_prices) + 1
-            plt.ylim(y_min, y_max)
-
         buffer = BytesIO()
         plt.savefig(buffer, format='png', dpi=100, bbox_inches='tight', facecolor='white')
         buffer.seek(0)
         plt.close()
 
-        # 將 buffer 內容寫到本地檔案，方便 debug
         with open("/tmp/test_trend.png", "wb") as f:
             f.write(buffer.getvalue())
         logger.info(f"已將趨勢圖暫存到 /tmp/test_trend.png，Buffer size: {len(buffer.getvalue())} bytes")
 
         logger.info("Oil price trend chart generated in memory with corrected dates")
 
-        # 上傳圖片到 ImageKit
         upload_response = imagekit.upload_file(
             file=buffer.getvalue(),
             file_name="oil_price_trend.png"
