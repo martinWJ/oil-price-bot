@@ -20,14 +20,29 @@ line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
 
 # 設定排程器
+logger.info("開始設定排程器...")
 scheduler = BackgroundScheduler(timezone='Asia/Singapore')
+logger.info("排程器時區設定為：Asia/Singapore")
+
 # 測試用：每分鐘執行一次
-scheduler.add_job(send_push_notification, 'interval', minutes=1)
+scheduler.add_job(
+    send_push_notification,
+    'interval',
+    minutes=1,
+    id='oil_price_notification',
+    replace_existing=True
+)
+logger.info("已設定每分鐘執行一次的排程任務")
+
 # 正式用：每週日中午12點執行
 # scheduler.add_job(send_push_notification, 'cron', day_of_week='sun', hour=12, minute=0)
-logger.info("排程器設定完成，準備啟動...")
-scheduler.start()
-logger.info("排程器已啟動！")
+
+try:
+    scheduler.start()
+    logger.info("排程器成功啟動！")
+except Exception as e:
+    logger.error(f"排程器啟動失敗：{str(e)}")
+    raise e
 
 @app.route("/callback", methods=['POST'])
 def callback():
