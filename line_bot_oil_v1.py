@@ -352,12 +352,17 @@ def get_oil_price_trend():
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
 
-        # 確保圖表有內容
-        plt.ylim(min(min(prices_92), min(prices_95), min(prices_98), min(prices_diesel)) - 1, 
-                max(max(prices_92), max(prices_95), max(prices_98), max(prices_diesel)) + 1)
+        # 計算所有價格的最小與最大值
+        all_prices = []
+        for arr in [prices_92, prices_95, prices_98, prices_diesel]:
+            all_prices += [p for p in arr if p is not None]
+        if all_prices:
+            y_min = min(all_prices) - 1
+            y_max = max(all_prices) + 1
+            plt.ylim(y_min, y_max)
 
         buffer = BytesIO()
-        plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+        plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight', facecolor='white')
         buffer.seek(0)
         plt.close()
 
@@ -368,7 +373,7 @@ def get_oil_price_trend():
             file=buffer.getvalue(),
             file_name="oil_price_trend.png"
         )
-        logger.info("Oil price trend chart uploaded to ImageKit")
+        logger.info(f"Oil price trend chart uploaded to ImageKit, URL: {upload_response.url}")
         return upload_response.url
     except Exception as e:
         logger.error(f"生成油價趨勢圖表時發生錯誤: {str(e)}")
