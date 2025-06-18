@@ -278,18 +278,8 @@ def get_oil_price_trend():
         buffer.seek(0)
         plt.close()
 
-        with open("/tmp/test_trend.png", "wb") as f:
-            f.write(buffer.getvalue())
-        logger.info(f"已將趨勢圖暫存到 /tmp/test_trend.png，Buffer size: {len(buffer.getvalue())} bytes")
-
-        logger.info("Oil price trend chart generated in memory with corrected dates")
-
-        upload_response = imagekit.upload_file(
-            file=buffer.getvalue(),
-            file_name="oil_price_trend.png"
-        )
-        logger.info(f"Oil price trend chart uploaded to ImageKit, URL: {upload_response.url}")
-        return upload_response.url
+        logger.info(f"Buffer size: {len(buffer.getvalue())} bytes")
+        return buffer
     except Exception as e:
         logger.error(f"生成油價趨勢圖表時發生錯誤: {str(e)}")
         import traceback
@@ -628,5 +618,14 @@ def handle_message(event):
         )
 
 if __name__ == "__main__":
+    # 測試本地端產生油價趨勢圖
+    buffer = get_oil_price_trend()
+    if buffer:
+        with open("trend_test.png", "wb") as f:
+            f.write(buffer.getvalue())
+        print("已將油價趨勢圖存成 trend_test.png，請用圖片檢視器打開確認內容。")
+    else:
+        print("產生油價趨勢圖失敗！")
+
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port) 
