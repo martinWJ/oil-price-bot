@@ -534,15 +534,17 @@ logger.info("開始設定排程器...")
 scheduler = BackgroundScheduler(timezone='Asia/Singapore')
 logger.info("排程器時區設定為：Asia/Singapore")
 
-# 測試用：每分鐘執行一次
+# 正式用：每週日中午12點執行
 scheduler.add_job(
     send_push_notification,
-    'interval',
-    minutes=1,
+    'cron',
+    day_of_week='sun',
+    hour=12,
+    minute=0,
     id='oil_price_notification',
     replace_existing=True
 )
-logger.info("已設定每分鐘執行一次的排程任務")
+logger.info("已設定每週日中午 12 點執行排程任務")
 
 try:
     scheduler.start()
