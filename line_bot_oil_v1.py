@@ -317,37 +317,47 @@ def get_oil_price_trend():
         plt.figure(figsize=(12, 7)) # Adjust figure size for better readability
         # 使用索引作為 X 軸數據，並在 xticks 中設置日期標籤
         x_indices = range(len(date_labels_ad))
-        plt.plot(x_indices, prices_92, marker='o', label='92 Unleaded')
-        plt.plot(x_indices, prices_95, marker='o', label='95 Unleaded')
-        plt.plot(x_indices, prices_98, marker='o', label='98 Unleaded')
-        plt.plot(x_indices, prices_diesel, marker='o', label='Super Diesel')
+        
+        # 只繪製有數據的線條
+        if any(p is not None for p in prices_95):
+            plt.plot(x_indices, prices_95, marker='o', label='95 Unleaded', linewidth=2, markersize=6)
+        if any(p is not None for p in prices_92):
+            plt.plot(x_indices, prices_92, marker='s', label='92 Unleaded', linewidth=2, markersize=6)
+        if any(p is not None for p in prices_98):
+            plt.plot(x_indices, prices_98, marker='^', label='98 Unleaded', linewidth=2, markersize=6)
+        if any(p is not None for p in prices_diesel):
+            plt.plot(x_indices, prices_diesel, marker='d', label='Super Diesel', linewidth=2, markersize=6)
 
         # 在每個點上添加價格標籤，使用索引作為 X 軸位置
         for i in x_indices:
             # 檢查價格是否為 None，如果不是則添加標籤
             if prices_92[i] is not None:
-                plt.text(i, prices_92[i], f"{prices_92[i]:.1f}", ha='center', va='bottom', fontsize=11) # Increased font size
+                plt.text(i, prices_92[i], f"{prices_92[i]:.1f}", ha='center', va='bottom', fontsize=10)
             if prices_95[i] is not None:
-                plt.text(i, prices_95[i], f"{prices_95[i]:.1f}", ha='center', va='bottom', fontsize=11)
+                plt.text(i, prices_95[i], f"{prices_95[i]:.1f}", ha='center', va='bottom', fontsize=10)
             if prices_98[i] is not None:
-                plt.text(i, prices_98[i], f"{prices_98[i]:.1f}", ha='center', va='bottom', fontsize=11)
+                plt.text(i, prices_98[i], f"{prices_98[i]:.1f}", ha='center', va='bottom', fontsize=10)
             if prices_diesel[i] is not None:
-                plt.text(i, prices_diesel[i], f"{prices_diesel[i]:.1f}", ha='center', va='bottom', fontsize=11)
+                plt.text(i, prices_diesel[i], f"{prices_diesel[i]:.1f}", ha='center', va='bottom', fontsize=10)
 
-        plt.xlabel('Date')
-        plt.ylabel('Price (NTD/L)')
-        plt.title('CPC Oil Price Trend')
+        plt.xlabel('Date', fontsize=12)
+        plt.ylabel('Price (NTD/L)', fontsize=12)
+        plt.title('CPC Oil Price Trend (Last 7 Weeks)', fontsize=14, fontweight='bold')
 
         # 設置 X 軸刻度位置和標籤
         # 顯示所有日期標籤
-        plt.xticks(x_indices, date_labels_ad, rotation=45, ha='right', fontsize=10) #ha='right' 讓標籤右對齊刻度線
+        plt.xticks(x_indices, date_labels_ad, rotation=45, ha='right', fontsize=10)
 
-        plt.legend()
-        plt.grid(True)
+        plt.legend(fontsize=10)
+        plt.grid(True, alpha=0.3)
         plt.tight_layout()
 
+        # 確保圖表有內容
+        plt.ylim(min(min(prices_92), min(prices_95), min(prices_98), min(prices_diesel)) - 1, 
+                max(max(prices_92), max(prices_95), max(prices_98), max(prices_diesel)) + 1)
+
         buffer = BytesIO()
-        plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
+        plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
         buffer.seek(0)
         plt.close()
 
