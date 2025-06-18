@@ -577,230 +577,84 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    text = event.message.text
-    logger.info(f"收到訊息: {text}")
+    """處理收到的文字訊息"""
+    logger.info(f"收到訊息: {event.message.text}")
     logger.info(f"訊息來源: {event.source.user_id}")
     
-    try:
-        if text in ["趨勢", "油價趨勢"]:
-            logger.info("開始處理趨勢請求")
-            try:
-                buffer = get_oil_price_trend()
-                if buffer:
-                    logger.info("成功取得油價趨勢圖")
-                    try:
-                        # 將圖片保存到臨時檔案
-                        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
-                            temp_file.write(buffer.getvalue())
-                            temp_file_path = temp_file.name
-                        
-                        try:
-                            # 讀取檔案內容為 bytes
-                            with open(temp_file_path, 'rb') as file:
-                                file_bytes = file.read()
-                            
-                            # 上傳到 ImageKit
-                            try:
-                                # 將圖片轉換為 base64
-                                base64_image = base64.b64encode(file_bytes).decode('utf-8')
-                                
-                                # 使用 requests 直接調用 ImageKit API
-                                from urllib.parse import urljoin
-                                
-                                upload_url = "https://upload.imagekit.io/api/v1/files/upload"
-                                private_key = os.getenv('IMAGEKIT_PRIVATE_KEY')
-                                auth_string = f"{private_key}:"
-                                auth_b64 = base64.b64encode(auth_string.encode()).decode()
-                                
-                                headers = {
-                                    "Authorization": f"Basic {auth_b64}"
-                                }
-                                
-                                data = {
-                                    "file": base64_image,
-                                    "fileName": f"oil_price_trend_{datetime.now().strftime('%Y%m%d%H%M%S')}.png",
-                                    "useUniqueFileName": "true",
-                                    "tags": ["oil_price", "trend"],
-                                    "responseFields": ["url"]
-                                }
-                                
-                                response = requests.post(upload_url, headers=headers, data=data)
-                                response.raise_for_status()
-                                upload_result = response.json()
-                                
-                                logger.info(f"ImageKit upload response: {upload_result}")
-                                
-                                if upload_result and 'url' in upload_result:
-                                    image_url = upload_result['url']
-                                    logger.info(f"Successfully uploaded image to ImageKit: {image_url}")
-                                    
-                                    # 回傳圖片
-                                    line_bot_api.reply_message(
-                                        event.reply_token,
-                                        ImageSendMessage(
-                                            original_content_url=image_url,
-                                            preview_image_url=image_url
-                                        )
-                                    )
-                                    logger.info("Oil price trend chart sent")
-                                else:
-                                    raise ValueError("No URL in upload result")
-                                    
-                            except Exception as e:
-                                logger.error(f"Error uploading image: {str(e)}")
-                                logger.error(f"Error type: {type(e)}")
-                                # 如果上傳失敗，直接使用本地檔案
-                                try:
-                                    # 回傳圖片
-                                    line_bot_api.reply_message(
-                                        event.reply_token,
-                                        TextSendMessage(text="Sorry, unable to upload the image. Please try again later.")
-                                    )
-                                except Exception as direct_error:
-                                    logger.error(f"Error sending error message: {str(direct_error)}")
-                        finally:
-                            # 清理臨時檔案
-                            try:
-                                os.unlink(temp_file_path)
-                            except Exception as cleanup_error:
-                                logger.error(f"Error cleaning up temporary file: {str(cleanup_error)}")
-                    except Exception as e:
-                        logger.error(f"Error processing image: {str(e)}")
-                        line_bot_api.reply_message(
-                            event.reply_token,
-                            TextSendMessage(text="Sorry, failed to process the image. Please try again later.")
-                        )
-                else:
-                    logger.error("無法取得油價趨勢資料")
-                    line_bot_api.reply_message(
-                        event.reply_token,
-                        TextSendMessage(text="Sorry, unable to get oil price trend data. Please try again later.")
-                    )
-            except Exception as e:
-                logger.error(f"Error processing trend request: {str(e)}")
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    TextSendMessage(text="Sorry, system is temporarily unable to process your request. Please try again later.")
-                )
-        elif text == "油價":
-            logger.info("收到油價指令")
-            current_price_data = get_current_oil_price() # Now returns a dict
-            weekly_comparison_info = get_weekly_oil_comparison()
-            
-            if current_price_data and weekly_comparison_info:
-                # Prepare current oil price components
-                current_price_elements = []
-                current_price_elements.append({
-                    "type": "text",
-                    "text": f"本周{current_price_data['date_range']}中油最新油價資訊:",
-                    "weight": "bold",
-                    "size": "sm",
-                    "margin": "md"
-                })
-                for oil_data in current_price_data["oil_prices"]:
-                    current_price_elements.append({
-                        "type": "text",
-                        "text": f"{oil_data['name']}: {oil_data['price']} 元/公升",
-                        "size": "sm",
-                        "margin": "sm"
-                    })
-
-                # 在當前油價資訊後加入分隔線
-                current_price_elements.append({
-                    "type": "separator",
-                    "margin": "md"
-                })
-
-                # 將當前油價資訊的元素插入到 Flex Message 的內容中
-                # weekly_comparison_info["body"]["contents"] 已經包含 "本週與上週油價比較" 的標題，
-                # 所以我們將 current_price_elements 插入到標題之後。
-                # 但是為了讓整體順序是「當前油價」 -> 「分隔線」 -> 「本週與上週比較標題」 -> 「比較結果」，
-                # 我們需要將現有的內容（從「本週與上週油價比較」標題開始）作為一個整體，
-                # 然後在最前面插入當前油價的元素。
-                
-                # 複製現有的 contents，因為 insert 會改變原列表
-                original_comparison_contents = weekly_comparison_info["body"]["contents"]
-                
-                # 將當前油價元素添加到最前面
-                weekly_comparison_info["body"]["contents"] = current_price_elements + original_comparison_contents
-
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    FlexSendMessage(
-                        alt_text="油價資訊",
-                        contents=weekly_comparison_info
-                    )
-                )
-            elif current_price_data:
-                # If only current price data is available, send as TextSendMessage
-                combined_price_text = f"本周{current_price_data['date_range']}中油最新油價資訊:\n"
-                for oil_data in current_price_data["oil_prices"]:
-                    combined_price_text += f"{oil_data['name']}: {oil_data['price']} 元/公升\n"
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    TextSendMessage(text=combined_price_text)
-                )
-            elif weekly_comparison_info:
-                # If only weekly comparison is available, send as FlexSendMessage
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    FlexSendMessage(
-                        alt_text="本週與上週油價比較",
-                        contents=weekly_comparison_info
-                    )
-                )
-            else:
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    TextSendMessage(text="Sorry, unable to get oil price information. Please try again later.")
-                )
-        elif text == "訂閱油價":
-            user_id = event.source.user_id
-            if add_subscriber(user_id):
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    TextSendMessage(text="您已成功訂閱油價自動推播！週日油價更新後將自動通知您。")
-                )
-            else:
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    TextSendMessage(text="您已經是油價自動推播的訂閱用戶了。")
-                )
-        elif text == "取消訂閱油價":
-            user_id = event.source.user_id
-            if remove_subscriber(user_id):
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    TextSendMessage(text="您已成功取消油價自動推播。")
-                )
-            else:
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    TextSendMessage(text="您尚未訂閱油價自動推播，無需取消。")
-                )
-        elif text == "測試推播":
-            logger.info("收到測試推播指令")
-            # 直接呼叫推播函數，不等待排程
+    # 取得用戶 ID
+    user_id = event.source.user_id
+    
+    # 處理訂閱指令
+    if event.message.text == "訂閱油價":
+        if add_subscriber(user_id):
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="您已成功訂閱油價推播！")
+            )
+        else:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="您已經訂閱過了！")
+            )
+    
+    # 處理取消訂閱指令
+    elif event.message.text == "取消訂閱":
+        if remove_subscriber(user_id):
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="您已成功取消訂閱油價推播！")
+            )
+        else:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="您尚未訂閱油價推播！")
+            )
+    
+    # 處理訂閱人數指令
+    elif event.message.text == "訂閱人數":
+        subscribers = load_subscribers()
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=f"目前共有 {len(subscribers)} 人訂閱油價推播！")
+        )
+    
+    # 處理測試推播指令
+    elif event.message.text == "測試推播":
+        try:
             send_push_notification()
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="已嘗試發送油價推播通知，請檢查您是否已訂閱。")
+                TextSendMessage(text="已發送測試推播！")
             )
-        else:
-            logger.info(f"收到未知指令: {text}")
+        except Exception as e:
+            logger.error(f"發送測試推播時發生錯誤: {str(e)}")
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="Hello! I am an oil price query bot\n\nPlease enter the following commands:\n• 油價：Query current oil price\n• 趨勢：View oil price trend chart\n• 訂閱油價：Subscribe to oil price push notifications\n• 取消訂閱油價：Unsubscribe from oil price push notifications\n• 測試推播：Test oil price push notification")
+                TextSendMessage(text="發送測試推播時發生錯誤，請稍後再試！")
             )
-    except Exception as e:
-        logger.error(f"Error processing message: {str(e)}")
-        try:
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="Sorry, system error occurred. Please try again later.")
-            )
-        except Exception as reply_error:
-            logger.error(f"Error sending error message: {str(reply_error)}")
+    
+    # 處理說明指令
+    elif event.message.text == "說明":
+        help_text = """📱 油價推播機器人使用說明：
+
+1️⃣ 訂閱油價：開始接收每週油價推播
+2️⃣ 取消訂閱：停止接收油價推播
+3️⃣ 測試推播：立即發送一次油價推播
+4️⃣ 訂閱人數：查看目前訂閱人數
+5️⃣ 說明：顯示此使用說明
+
+每週日中午 12 點會自動推播最新油價資訊！"""
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=help_text)
+        )
+    
+    # 處理其他訊息
+    else:
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text="請輸入「說明」查看使用說明！")
+        )
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
