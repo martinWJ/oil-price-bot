@@ -344,8 +344,17 @@ def get_oil_price_trend():
         buffer.seek(0)
         plt.close()
 
-        logger.info("Oil price trend chart generated in memory with corrected dates")
-        return buffer
+        # 上傳圖片到 ImageKit
+        upload_response = imagekit.upload_file(
+            file=buffer.getvalue(),
+            file_name="oil_price_trend.png",
+            options={
+                "response_fields": ["url"],
+                "use_unique_file_name": True
+            }
+        )
+        logger.info("Oil price trend chart uploaded to ImageKit")
+        return upload_response.url
     except Exception as e:
         logger.error(f"生成油價趨勢圖表時發生錯誤: {str(e)}")
         import traceback
@@ -625,8 +634,8 @@ def handle_message(event):
             line_bot_api.reply_message(
                 event.reply_token,
                 ImageSendMessage(
-                    original_content_url=trend_buffer.getvalue(),
-                    preview_image_url=trend_buffer.getvalue()
+                    original_content_url=trend_buffer,
+                    preview_image_url=trend_buffer
                 )
             )
         else:
