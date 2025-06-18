@@ -30,28 +30,6 @@ plt.rcParams['axes.unicode_minus'] = False
 # 初始化 Flask 應用程式
 app = Flask(__name__)
 
-# 設定排程器
-logger.info("開始設定排程器...")
-scheduler = BackgroundScheduler(timezone='Asia/Singapore')
-logger.info("排程器時區設定為：Asia/Singapore")
-
-# 測試用：每分鐘執行一次
-scheduler.add_job(
-    send_push_notification,
-    'interval',
-    minutes=1,
-    id='oil_price_notification',
-    replace_existing=True
-)
-logger.info("已設定每分鐘執行一次的排程任務")
-
-try:
-    scheduler.start()
-    logger.info("排程器成功啟動！")
-except Exception as e:
-    logger.error(f"排程器啟動失敗：{str(e)}")
-    raise e
-
 # 設定 LINE Channel Access Token 和 Channel Secret
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
@@ -518,49 +496,60 @@ def get_weekly_oil_comparison():
         return None
 
 def send_push_notification():
-    """Send push notification to all subscribed users"""
-    logger.info("開始執行 send_push_notification 函數")
+    """發送推播訊息給所有訂閱用戶。"""
     try:
-        # 讀取訂閱用戶列表
-        logger.info("嘗試讀取 subscribed_users.txt 檔案")
-        with open('subscribed_users.txt', 'r') as f:
-            subscribed_users = [line.strip() for line in f.readlines()]
-        logger.info(f"成功讀取 subscribed_users.txt 檔案，訂閱用戶數量: {len(subscribed_users)}")
-        if not subscribed_users:
-            logger.warning("沒有訂閱用戶，跳過推播")
+        # 載入訂閱用戶
+        subscribers = load_subscribers()
+        if not subscribers:
+            logger.info("沒有訂閱用戶，跳過推播。")
             return
 
-        # 獲取最新油價
-        logger.info("嘗試獲取最新油價")
-        oil_price = get_current_oil_price()
-        logger.info(f"成功獲取最新油價: {oil_price}")
+        # 取得當前油價
+        oil_price_data = get_current_oil_price()
+        if not oil_price_data:
+            logger.error("無法取得油價資料，跳過推播。")
+            return
 
-        # 獲取趨勢圖
-        logger.info("嘗試獲取趨勢圖")
-        trend_image_url = get_oil_price_trend()
-        logger.info(f"成功獲取趨勢圖 URL: {trend_image_url}")
+        # 建立推播訊息
+        message = f"📊 本週油價資訊 ({oil_price_data['date_range']})\n\n"
+        for price in oil_price_data['oil_prices']:
+            message += f"{price['name']}: {price['price']} 元/公升\n"
 
-        # 發送推播訊息
-        logger.info("開始發送推播訊息")
-        for user_id in subscribed_users:
-            logger.info(f"正在發送推播訊息給用戶: {user_id}")
+        # 發送推播訊息給所有訂閱用戶
+        for user_id in subscribers:
             try:
                 line_bot_api.push_message(
                     user_id,
-                    [
-                        TextSendMessage(text=f"本週油價：\n{oil_price}"),
-                        ImageSendMessage(
-                            original_content_url=trend_image_url,
-                            preview_image_url=trend_image_url
-                        )
-                    ]
+                    TextSendMessage(text=message)
                 )
-                logger.info(f"成功發送推播訊息給用戶: {user_id}")
+                logger.info(f"成功發送推播訊息給用戶 {user_id}")
             except Exception as e:
                 logger.error(f"發送推播訊息給用戶 {user_id} 時發生錯誤: {str(e)}")
-        logger.info("send_push_notification 函數執行完成")
+
     except Exception as e:
-        logger.error(f"send_push_notification 函數執行時發生錯誤: {str(e)}")
+        logger.error(f"執行推播任務時發生錯誤: {str(e)}")
+
+# 設定排程器
+logger.info("開始設定排程器...")
+scheduler = BackgroundScheduler(timezone='Asia/Singapore')
+logger.info("排程器時區設定為：Asia/Singapore")
+
+# 測試用：每分鐘執行一次
+scheduler.add_job(
+    send_push_notification,
+    'interval',
+    minutes=1,
+    id='oil_price_notification',
+    replace_existing=True
+)
+logger.info("已設定每分鐘執行一次的排程任務")
+
+try:
+    scheduler.start()
+    logger.info("排程器成功啟動！")
+except Exception as e:
+    logger.error(f"排程器啟動失敗：{str(e)}")
+    raise e
 
 @app.route("/webhook", methods=['POST'])
 def callback():
