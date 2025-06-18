@@ -618,6 +618,23 @@ def handle_message(event):
             TextSendMessage(text=f"目前共有 {len(subscribers)} 人訂閱油價推播！")
         )
     
+    # 處理油價趨勢指令
+    elif event.message.text == "油價趨勢":
+        trend_buffer = get_oil_price_trend()
+        if trend_buffer:
+            line_bot_api.reply_message(
+                event.reply_token,
+                ImageSendMessage(
+                    original_content_url=trend_buffer.getvalue(),
+                    preview_image_url=trend_buffer.getvalue()
+                )
+            )
+        else:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="無法取得油價趨勢圖，請稍後再試！")
+            )
+    
     # 處理測試推播指令
     elif event.message.text == "測試推播":
         try:
@@ -641,7 +658,8 @@ def handle_message(event):
 2️⃣ 取消訂閱：停止接收油價推播
 3️⃣ 測試推播：立即發送一次油價推播
 4️⃣ 訂閱人數：查看目前訂閱人數
-5️⃣ 說明：顯示此使用說明
+5️⃣ 油價趨勢：查看油價趨勢圖
+6️⃣ 說明：顯示此使用說明
 
 每週日中午 12 點會自動推播最新油價資訊！"""
         line_bot_api.reply_message(
