@@ -566,6 +566,11 @@ def init_scheduler():
 # 在應用程式啟動時初始化排程器
 init_scheduler()
 
+@app.route("/", methods=['GET'])
+def health_check():
+    """健康檢查端點"""
+    return "OK", 200
+
 @app.route("/webhook", methods=['POST'])
 def callback():
     # 取得 X-Line-Signature header 值
