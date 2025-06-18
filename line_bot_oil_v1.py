@@ -30,6 +30,28 @@ plt.rcParams['axes.unicode_minus'] = False
 # 初始化 Flask 應用程式
 app = Flask(__name__)
 
+# 設定排程器
+logger.info("開始設定排程器...")
+scheduler = BackgroundScheduler(timezone='Asia/Singapore')
+logger.info("排程器時區設定為：Asia/Singapore")
+
+# 測試用：每分鐘執行一次
+scheduler.add_job(
+    send_push_notification,
+    'interval',
+    minutes=1,
+    id='oil_price_notification',
+    replace_existing=True
+)
+logger.info("已設定每分鐘執行一次的排程任務")
+
+try:
+    scheduler.start()
+    logger.info("排程器成功啟動！")
+except Exception as e:
+    logger.error(f"排程器啟動失敗：{str(e)}")
+    raise e
+
 # 設定 LINE Channel Access Token 和 Channel Secret
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
@@ -496,83 +518,49 @@ def get_weekly_oil_comparison():
         return None
 
 def send_push_notification():
-    """
-    Fetches the latest oil price information and sends a push notification to all subscribed users.
-    This function is intended to be called by the scheduler.
-    """
-    logger.info("開始執行自動推播任務...")
-    subscribers = load_subscribers()
-
-    if not subscribers:
-        logger.info("沒有訂閱用戶，跳過推播任務。")
-        return
-
+    """Send push notification to all subscribed users"""
+    logger.info("開始執行 send_push_notification 函數")
     try:
-        current_price_data = get_current_oil_price()
-        weekly_comparison_info = get_weekly_oil_comparison()
-
-        if not current_price_data and not weekly_comparison_info:
-            logger.error("無法獲取當前油價或週比週比較資訊，無法推播。")
+        # 讀取訂閱用戶列表
+        logger.info("嘗試讀取 subscribed_users.txt 檔案")
+        with open('subscribed_users.txt', 'r') as f:
+            subscribed_users = [line.strip() for line in f.readlines()]
+        logger.info(f"成功讀取 subscribed_users.txt 檔案，訂閱用戶數量: {len(subscribed_users)}")
+        if not subscribed_users:
+            logger.warning("沒有訂閱用戶，跳過推播")
             return
 
-        # 組合 Flex Message 內容 (與 handle_message 類似的邏輯)
-        flex_message_contents = {
-            "type": "bubble",
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "contents": []
-            }
-        }
+        # 獲取最新油價
+        logger.info("嘗試獲取最新油價")
+        oil_price = get_current_oil_price()
+        logger.info(f"成功獲取最新油價: {oil_price}")
 
-        if current_price_data:
-            flex_message_contents["body"]["contents"].append({
-                "type": "text",
-                "text": f"本周{current_price_data['date_range']}中油最新油價資訊:",
-                "weight": "bold",
-                "size": "sm",
-                "margin": "md"
-            })
-            for oil_data in current_price_data["oil_prices"]:
-                flex_message_contents["body"]["contents"].append({
-                    "type": "text",
-                    "text": f"{oil_data['name']}: {oil_data['price']} 元/公升",
-                    "size": "sm",
-                    "margin": "sm"
-                })
-            flex_message_contents["body"]["contents"].append({
-                "type": "separator",
-                "margin": "md"
-            })
-        
-        if weekly_comparison_info:
-            # 因為 weekly_comparison_info 已經是 Flex Message 的 body 部分，我們需要提取其 contents
-            for item in weekly_comparison_info["body"]["contents"]:
-                flex_message_contents["body"]["contents"].append(item)
+        # 獲取趨勢圖
+        logger.info("嘗試獲取趨勢圖")
+        trend_image_url = get_oil_price_trend()
+        logger.info(f"成功獲取趨勢圖 URL: {trend_image_url}")
 
-        # 確保有內容可以推播
-        if not flex_message_contents["body"]["contents"]:
-            logger.warning("生成的推播訊息內容為空，跳過推播。")
-            return
-
-        # 構建 FlexSendMessage
-        flex_message = FlexSendMessage(
-            alt_text="中油油價自動推播",
-            contents=flex_message_contents
-        )
-
-        # 推播訊息給所有訂閱用戶
-        for user_id in subscribers:
+        # 發送推播訊息
+        logger.info("開始發送推播訊息")
+        for user_id in subscribed_users:
+            logger.info(f"正在發送推播訊息給用戶: {user_id}")
             try:
-                line_bot_api.push_message(user_id, flex_message)
-                logger.info(f"成功向用戶 {user_id} 推播油價資訊。")
-            except Exception as push_error:
-                logger.error(f"向用戶 {user_id} 推播油價資訊時發生錯誤: {str(push_error)}")
-
+                line_bot_api.push_message(
+                    user_id,
+                    [
+                        TextSendMessage(text=f"本週油價：\n{oil_price}"),
+                        ImageSendMessage(
+                            original_content_url=trend_image_url,
+                            preview_image_url=trend_image_url
+                        )
+                    ]
+                )
+                logger.info(f"成功發送推播訊息給用戶: {user_id}")
+            except Exception as e:
+                logger.error(f"發送推播訊息給用戶 {user_id} 時發生錯誤: {str(e)}")
+        logger.info("send_push_notification 函數執行完成")
     except Exception as e:
-        logger.error(f"執行自動推播任務時發生錯誤: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"send_push_notification 函數執行時發生錯誤: {str(e)}")
 
 @app.route("/webhook", methods=['POST'])
 def callback():
@@ -824,18 +812,5 @@ def handle_message(event):
             logger.error(f"Error sending error message: {str(reply_error)}")
 
 if __name__ == "__main__":
-    # 初始化排程器
-    scheduler = BackgroundScheduler()
-
-    # 設定每週日下午的排程任務
-    # day_of_week=6 代表星期日 (0=星期一, 6=星期日)
-    # hour=14, minute=00 代表下午 2 點
-    scheduler.add_job(send_push_notification, 'cron', day_of_week=6, hour=14, minute=0, timezone='Asia/Taipei')
-    logger.info("已設定自動推播排程任務：每週日下午 2 點推播油價資訊。")
-
-    # 啟動排程器
-    scheduler.start()
-    logger.info("排程器已啟動。")
-
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port) 
