@@ -362,9 +362,14 @@ def get_oil_price_trend():
             plt.ylim(y_min, y_max)
 
         buffer = BytesIO()
-        plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight', facecolor='white')
+        plt.savefig(buffer, format='png', dpi=100, bbox_inches='tight', facecolor='white')
         buffer.seek(0)
         plt.close()
+
+        # 將 buffer 內容寫到本地檔案，方便 debug
+        with open("/tmp/test_trend.png", "wb") as f:
+            f.write(buffer.getvalue())
+        logger.info(f"已將趨勢圖暫存到 /tmp/test_trend.png，Buffer size: {len(buffer.getvalue())} bytes")
 
         logger.info("Oil price trend chart generated in memory with corrected dates")
 
