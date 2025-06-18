@@ -253,8 +253,11 @@ def get_oil_price_trend():
             logger.error("沒有有效的油價數據可供繪製圖表")
             return None
 
+        logger.info(f"成功解析歷史油價數據，共有 {len(dated_oil_prices)} 個日期")
+
         # 按照日期排序
         sorted_dates_roc = sorted(dated_oil_prices.keys())
+        logger.info(f"排序後的日期: {sorted_dates_roc}")
 
         # If after parsing and sorting, there are no dates, return None
         if not sorted_dates_roc:
@@ -280,6 +283,11 @@ def get_oil_price_trend():
             prices_98.append(current_day_prices.get('98無鉛汽油', None))
             prices_diesel.append(current_day_prices.get('超級/高級柴油', None))
 
+        logger.info(f"92無鉛汽油價格: {prices_92}")
+        logger.info(f"95無鉛汽油價格: {prices_95}")
+        logger.info(f"98無鉛汽油價格: {prices_98}")
+        logger.info(f"超級柴油價格: {prices_diesel}")
+
         # Now, filter out dates where NO oil price is available, even after aggregation.
         # This will prevent plotting empty date points.
         valid_indices = [i for i, date in enumerate(dates_roc) if any(
@@ -296,15 +304,15 @@ def get_oil_price_trend():
         prices_98 = [prices_98[i] for i in valid_indices]
         prices_diesel = [prices_diesel[i] for i in valid_indices]
 
-        # logger.info(f"整理後的 dated_oil_prices: {dated_oil_prices}") # Removed debugging log
-        # logger.info(f"最終用於繪圖的 prices_92: {prices_92}") # Removed debugging log
-        # logger.info(f"最終用於繪圖的 prices_95: {prices_95}") # Removed debugging log
-        # logger.info(f"最終用於繪圖的 prices_98: {prices_98}") # Removed debugging log
-        # logger.info(f"最終用於繪圖的 prices_diesel: {prices_diesel}") # Removed debugging log
+        logger.info(f"過濾後的有效日期: {dates_roc}")
+        logger.info(f"過濾後的92無鉛汽油價格: {prices_92}")
+        logger.info(f"過濾後的95無鉛汽油價格: {prices_95}")
+        logger.info(f"過濾後的98無鉛汽油價格: {prices_98}")
+        logger.info(f"過濾後的超級柴油價格: {prices_diesel}")
 
         # 將民國日期轉換為西元日期用於圖表標籤
         date_labels_ad = [tw_date_to_ad_date(d) for d in dates_roc]
-
+        logger.info(f"轉換後的西元日期標籤: {date_labels_ad}")
 
         plt.figure(figsize=(12, 7)) # Adjust figure size for better readability
         # 使用索引作為 X 軸數據，並在 xticks 中設置日期標籤
@@ -326,7 +334,6 @@ def get_oil_price_trend():
             if prices_diesel[i] is not None:
                 plt.text(i, prices_diesel[i], f"{prices_diesel[i]:.1f}", ha='center', va='bottom', fontsize=11)
 
-
         plt.xlabel('Date')
         plt.ylabel('Price (NTD/L)')
         plt.title('CPC Oil Price Trend')
@@ -343,6 +350,8 @@ def get_oil_price_trend():
         plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
         buffer.seek(0)
         plt.close()
+
+        logger.info("Oil price trend chart generated in memory with corrected dates")
 
         # 上傳圖片到 ImageKit
         upload_response = imagekit.upload_file(
